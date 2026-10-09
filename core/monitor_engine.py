@@ -169,7 +169,8 @@ class MonitorEngine:
                     if not rule.get("enabled", True):
                         continue
 
-                    if RuleEngine.evaluate_rule(rule, win_info):
+                    is_match = RuleEngine.evaluate_rule(rule, win_info)
+                    if is_match:
                         matched_ids.append(rule["id"])
                         cue_geo = RuleEngine.calculate_cue_geometry(rule, win_info, virt_bounds)
 
@@ -185,9 +186,10 @@ class MonitorEngine:
                 # 3. Notifică doar dacă s-a schimbat lista de reguli potrivite
                 if matched_ids != self._last_active_rules_ids:
                     if matched_ids:
-                        logger.info(f"Reguli declanșate ({len(matched_ids)}): {matched_ids} pe fereastra '{win_info.get('title')}' [{win_info.get('process_name')}]")
+                        logger.info(f"[MONITOR] Reguli declanșate ({len(matched_ids)}): {matched_ids} pe fereastra '{win_info.get('title')}' [{win_info.get('process_name')}]")
                     else:
-                        logger.info(f"Nicio regulă activă pe fereastra '{win_info.get('title')}' [{win_info.get('process_name')}]. Ascund repere.")
+                        active_rule_names = [r.get('name') for r in rules if r.get('enabled', True)]
+                        logger.info(f"[MONITOR] Nicio regulă activă pe fereastra în prim-plan '{win_info.get('title')}' [{win_info.get('process_name')}]. Reguli evaluate: {active_rule_names}. Ascund repere.")
                     self._last_active_rules_ids = matched_ids
                     if self.on_cues_changed:
                         self.on_cues_changed(matched_cues)

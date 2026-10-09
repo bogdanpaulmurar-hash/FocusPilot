@@ -19,15 +19,18 @@ if BASE_DIR not in sys.path:
 # Configurare logging în fișier TXT dedicat pentru depanare
 LOG_FILE = os.path.join(BASE_DIR, "focuspilot_log.txt")
 file_handler = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
-file_handler.setLevel(logging.INFO)
-file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
 file_handler.setFormatter(file_formatter)
 
+# Setăm root logger la DEBUG pentru a cuprinde toate modulele (MonitorEngine, Overlay, Picker, etc.)
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+root_logger.handlers.clear()
+root_logger.addHandler(file_handler)
+
 logger = logging.getLogger("FocusPilot")
-logger.setLevel(logging.INFO)
-logger.handlers.clear()
-logger.addHandler(file_handler)
-logger.propagate = False
+logger.setLevel(logging.DEBUG)
 
 def handle_uncaught_exception(exc_type, exc_value, exc_traceback):
     """Prinde și salvează orice eroare neprevăzută în focuspilot_log.txt."""
@@ -194,36 +197,49 @@ class FocusPilotApp:
 
     def _test_single_cue(self, rule: Dict[str, Any]) -> None:
         """Testează reperul vizual desenându-l pe ecran timp de 6 secunde exact unde a fost configurat."""
-        logger.info(f"Testare vizuală manuală pentru regula: '{rule.get('name')}'")
+        rule_name = rule.get('name', 'Unknown')
+        logger.info(f"[TEST] Pornire testare vizuală manuală pentru regula: '{rule_name}'")
         
-        region = rule.get("region", {})
-        abs_x = region.get("abs_x", 0)
-        abs_y = region.get("abs_y", 0)
-        w = int(region.get("width", 360))
-        h = int(region.get("height", 60))
+        try:
+            region = rule.get("region", {})
+            abs_x = region.get("abs_x", 0)
+            abs_y = region.get("abs_y", 0)
+            w = int(region.get("width", 360))
+            h = int(region.get("height", 60))
 
-        # Dacă există coordonate absolute din selecție, desenăm exact acolo unde a selectat utilizatorul!
-        if abs_x > 0 and abs_y > 0:
-            target_geo = (abs_x, abs_y, w, h)
-        else:
-            sw = self.root.winfo_screenwidth() or 1920
-            sh = self.root.winfo_screenheight() or 1080
-            cx = (sw // 2) - (w // 2)
-            cy = (sh // 2) - (h // 2)
-            target_geo = (cx, cy, w, h)
+            logger.info(f"[TEST] Parametri regiune: abs=({abs_x}, {abs_y}), size=({w}x{h}), mode={region.get('mode')}")
 
-        demo_cue = {
-            "rule_id": rule.get("id", "demo"),
-            "rule_name": rule.get("name", "Test Demo"),
-            "geometry": target_geo,
-            "visual_cue": rule.get("visual_cue", {}),
-            "window_title": "Fereastră de Test"
-        }
-        self.overlay.update_cues([demo_cue])
+            # Dacă există coordonate absolute din selecție, desenăm exact acolo unde a selectat utilizatorul!
+            if abs_x > 0 and abs_y > 0:
+                target_geo = (abs_x, abs_y, w, h)
+            else:
+                sw = self.root.winfo_screenwidth() or 1920
+                sh = self.root.winfo_screenheight() or 1080
+                cx = (sw // 2) - (w // 2)
+                cy = (sh // 2) - (h // 2)
+                target_geo = (cx, cy, w, h)
 
-        # Auto-ascundere după 6 secunde dacă nu există potrivire reală de fundal
-        self.root.after(6000, lambda: self.overlay.update_cues([]))
-        self.root.after(4000, lambda: self.overlay.update_cues([]))
+            logger.info(f"[TEST] Coordonate finale trimise la overlay: {target_geo}")
+
+            demo_cue = {
+                "rule_id": rule.get("id", "demo"),
+                "rule_name": rule_name,
+                "geometry": target_geo,
+                "visual_cue": rule.get("visual_cue", {}),
+                "window_title": "Fereastră de Test"
+            }
+            self.overlay.update_cues([demo_cue])
+            logger.info(f"[TEST] Comandă de afișare transmisă cu succes către MultiScreenOverlay.")
+
+            # Auto-ascundere după 6 secunde dacă nu există potrivire reală de fundal
+            self.root.after(6000, lambda: self._on_test_auto_hide(rule_name))
+        except Exception as exc:
+            import traceback
+            logger.error(f"[TEST EȘUAT] Eroare la pregătirea sau afișarea reperului de test pentru '{rule_name}': {exc}\n{traceback.format_exc()}")
+
+    def _on_test_auto_hide(self, rule_name: str) -> None:
+        logger.info(f"[TEST] Expirat intervalul de 6 secunde pentru testul regulii '{rule_name}'. Se curăță overlay-ul.")
+        self.overlay.update_cues([])
 
     def _test_demo_cues_from_tray(self) -> None:
         rules = self.config_manager.get_rules()

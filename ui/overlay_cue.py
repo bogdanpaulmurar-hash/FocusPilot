@@ -90,44 +90,58 @@ class MultiScreenOverlay:
     def _apply_click_through(self) -> None:
         """Face fereastra invizibilă pentru mouse (toate click-urile trec prin ea direct la aplicație)."""
         if not self.root:
+            logger.warning("[OVERLAY] _apply_click_through eșuat: self.root este None")
             return
         try:
             hwnd = int(self.root.frame(), 16)
             ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-            ex_style |= (win32con.WS_EX_TRANSPARENT | win32con.WS_EX_LAYERED | win32con.WS_EX_TOOLWINDOW)
-            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex_style)
+            target_style = ex_style | win32con.WS_EX_TRANSPARENT | win32con.WS_EX_LAYERED | win32con.WS_EX_TOOLWINDOW
+            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, target_style)
+            logger.debug(f"[OVERLAY] click-through aplicat cu succes pe HWND {hwnd} (stil nou: {hex(target_style)})")
         except Exception as exc:
-            logger.debug(f"Eroare setare click-through: {exc}")
+            logger.error(f"[OVERLAY EȘUAT] Eroare la aplicarea stilurilor click-through pe overlay: {exc}")
 
     def update_cues(self, cues: List[Dict[str, Any]]) -> None:
         """Actualizează lista de repere vizuale de afișat (apelat din orice thread)."""
         if not self.root:
+            logger.warning("[OVERLAY] update_cues apelat dar self.root este None")
             return
+        logger.debug(f"[OVERLAY] update_cues primit cu {len(cues)} repere.")
         self.root.after(0, self._render_cues, cues)
 
     def _render_cues(self, cues: List[Dict[str, Any]]) -> None:
         """Desenează reperele vizuale pe canvas."""
         self.active_cues = cues
         if not self.canvas or not self.root:
+            logger.warning("[OVERLAY] _render_cues: canvas sau root lipsesc!")
             return
 
         self.canvas.delete("all")
 
         if not cues:
             if self._is_visible:
+                logger.info("[OVERLAY] Nu mai există repere de afișat. Se ascunde fereastra (withdraw).")
                 self.root.withdraw()
                 self._is_visible = False
             return
 
-        # Asigurăm afișarea și ordinea de sus (TopMost)
-        self.root.deiconify()
-        self.root.lift()
-        self.root.attributes("-topmost", True)
-        self._apply_click_through()
-        self._is_visible = True
+        try:
+            # Asigurăm afișarea și ordinea de sus (TopMost)
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self._apply_click_through()
+            self._is_visible = True
+            logger.info(f"[OVERLAY] Fereastră HUD activată (deiconify, topmost). Se desenează {len(cues)} repere.")
+        except Exception as exc:
+            logger.error(f"[OVERLAY EȘUAT] Eroare la activarea ferestrei overlay: {exc}")
 
-        for cue in cues:
-            self._draw_single_cue(cue)
+        for i, cue in enumerate(cues):
+            try:
+                self._draw_single_cue(cue)
+                logger.debug(f"[OVERLAY] Desenat reper #{i+1}: '{cue.get('rule_name')}' la coordonatele {cue.get('geometry')}")
+            except Exception as exc:
+                logger.error(f"[OVERLAY EȘUAT] Eroare la desenarea reperului #{i+1} ('{cue.get('rule_name')}'): {exc}")
 
     def _draw_single_cue(self, cue: Dict[str, Any]) -> None:
         """Desenează un reper vizual specific (chenar, săgeată, badge)."""
