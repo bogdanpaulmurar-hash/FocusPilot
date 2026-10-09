@@ -28,4 +28,9 @@ CERINTE CHEIE:
    - Dropdown procese: optiune universala 'browser (Edge + Chrome)' care se activeaza indiferent de browserul folosit, plus lista aplicatiilor deschise in Windows.
    - Testare pozitie exacta: butonul Testeaza deseneaza reperul vizual direct in locatia selectata de utilizator pe ecran.
 
-Pentru detalii complete de arhitectura si cod, vezi fisierul PROMPT_MASTER_SPECIFICATION.md din acest folder.
+7. NOU (v2.0) - Arhitectura SilkTest-Like & Mapare Elemente / Butoane:
+   - Motivul pentru care overlay-ul transparent clasic esueaza: DWM Windows si accelerarea GPU (DirectX swapchain) din Chrome/Edge fac invizibila fereastra cu cheie de culoare transparenta.
+   - Solutie SilkTest pentru Web: Utilizare DevTools / CDP sau injectare Userscript (Tampermonkey) direct in DOM; elementele primesc 'outline: 4px solid red !important' direct in pagina HTML.
+   - Solutie SilkTest pentru Desktop: Mapare obiectuala prin Windows UI Automation (AutomationElement, BoundingRectangle, ControlType, AutomationId) si chenare vizuale realizate prin 4 bare TopMost de culoare solida opaca (fara transparentcolor, garantat vizibile).
+
+Pentru detalii complete de arhitectura, cod si roadmap, vezi fisierul PROMPT_MASTER_SPECIFICATION.md din acest folder.

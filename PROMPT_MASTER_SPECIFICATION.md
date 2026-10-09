@@ -155,13 +155,45 @@ Fiecare regulă de formatare condițională este stocată în `config.json` conf
 
 ---
 
-## 6. INSTRUCȚIUNI DE CONTINUARE PENTRU ALT MODEL AI (IF TOKENS RUN OUT)
+## 6. ANALIZĂ TEHNICĂ: DE CE METODA CLASICĂ OVERLAY TKINTER A EȘUAT ȘI SOLUȚIA SILKTEST-LIKE (UPDATE v2.0)
 
-Dacă contextul curent se întrerupe, următorul model AI trebuie:
-1. Să citească `FocusPilot/PROMPT_MASTER_SPECIFICATION.md` și `FocusPilot/core/config_manager.py`.
-2. Să verifice fișierele create și cele rămase folosind uneltele de explorare.
-3. Să finalizeze orice modul neterminat, asigurându-se că:
-   - `FocusPilot.pyw` pornește fără eroare cu `pythonw.exe`.
-   - Meniul din tray are callback-uri sigure (non-blocking, folosind fire de execuție separate pentru ferestrele Tkinter).
-   - Overlay-ul de desenare funcționează fără să captureze click-urile mouse-ului utilizatorului (`WS_EX_TRANSPARENT`).
-   - Repository-ul git din `FocusPilot` este inițializat și comitează fișierele.
+### 6.1. De ce a eșuat Overlay-ul Tkinter `-transparentcolor`:
+1. **Compositing Hardware Chrome/Edge (DirectX/DWM):**
+   Browserele moderne folosesc accelerare GPU cu suprafețe DirectX swapchain. O fereastră Tkinter `WS_EX_LAYERED` cu transparență cromatică (`-transparentcolor`) este deseori ignorată de DWM sau acoperită de swapchain-ul GPU al browserului.
+2. **Absența Mapării Reale de Controale (Lipsa arborelui de obiecte):**
+   Spre deosebire de unelte profesionale de testare precum **SilkTest, TestComplete sau Playwright Inspect**, capturarea doar prin coordonate relative de fereastră e vulnerabilă la scroll, zoom, tab-uri deschise și redimensionare.
+
+---
+
+### 6.2. Arhitectura SilkTest-Like Propusă (Plan de Implementare):
+
+#### Pilonul 1: Inspecție și Formatare Nativă DOM în Browser (DevTools / CDP / Userscript)
+* **Cum funcționează SilkTest în Web:** SilkTest injectează un agent sau comunică prin DevTools Protocol (CDP) direct cu pagina web.
+* **Formatare directă în DOM:** În loc să desenăm o fereastră deasupra browserului, injectăm stilul direct pe elementul HTML:
+  ```javascript
+  // SilkTest-like element highlighter
+  element.style.setProperty('outline', '4px solid #FF0000', 'important');
+  element.style.setProperty('box-shadow', '0 0 12px rgba(255,0,0,0.8)', 'important');
+  ```
+* **Selectare Interactivă ca în F12 DevTools:**
+  La activarea selecției, utilizatorul trece mouse-ul peste elementele paginii, elementele se aprind cu contur albastru/roșu (hover inspector), iar la clic se capturează:
+  - Selectorul CSS (`#categoryId`, `input[name="category"]`, `div.gsp-ticket-header`)
+  - XPath-ul exact
+  - Textul interior (`innerText`)
+  - Poziția `getBoundingClientRect()`
+
+#### Pilonul 2: SilkTest-Like Desktop Control Inspector (Windows UI Automation / UIA)
+* Pentru aplicațiile desktop native (non-browser), se folosește arborele Windows UI Automation (`UIAutomationCore.dll`):
+  - Fiecare buton, câmp text, listă este un `AutomationElement`.
+  - Proprietăți extrase: `AutomationId`, `Name`, `ClassName`, `ControlType`, `BoundingRectangle`.
+* **Evidențiere Vizuală prin 4 Bare Solid-Color (Frame Border):**
+  În loc de o fereastră gigant transparentă pe 3 ecrane care se pierde în DWM, se creează **4 mici ferestre TopMost opace de 3px grosime** (Sus, Jos, Stânga, Dreapta) care încadrează fizic dreptunghiul elementului. Această metodă nu folosește transparență și este 100% garantată vizual peste orice aplicație cu accelerare hardware.
+
+---
+
+## 7. FOAIE DE PARCURS PENTRU CONTINUARE (ROADMAP PENTRU URMATORUL MODEL AI)
+
+Când se reia dezvoltarea cu buget reîncărcat sau alt model AI:
+1. **Pasul 1:** Implementarea modului `4-Bar Frame Border` în `ui/overlay_cue.py` — înlocuirea canvasului transparent cu 4 bare subțiri de culoare solidă roșie care îmbracă zona selectată fără erori de transparență.
+2. **Pasul 2:** Implementarea modulului `integrations/browser_inspector.py` bazat pe Playwright / CDP pentru a deschide Chrome/Edge cu portul de depanare activat (`--remote-debugging-port=9222`) și a culege selectorii DOM la clic (SilkTest style).
+3. **Pasul 3:** Conectarea scriptului Tampermonkey din `integrations/focuspilot_browser_highlighter.user.js` direct în browserul de zi cu zi pentru formatare nativă fără consum de resurse.
