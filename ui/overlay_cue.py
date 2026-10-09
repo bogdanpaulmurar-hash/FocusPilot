@@ -161,7 +161,7 @@ class MultiScreenOverlay:
                 width=1
             )
 
-        # 2. Săgeată Roșie Indicatoare (focalizare atenție)
+        # 2. Săgeată Indicatoare (focalizare atenție)
         if visual.get("arrow_enabled", True):
             arrow_color = visual.get("arrow_color", "#FF0000")
             direction = visual.get("arrow_direction", "right")
@@ -175,14 +175,16 @@ class MultiScreenOverlay:
             badge_text = visual.get("badge_text", "⚠️ ATENȚIE AICI!")
             badge_bg = visual.get("badge_bg", "#D90429")
             badge_fg = visual.get("badge_fg", "#FFFFFF")
+            arrow_dir = visual.get("arrow_direction", "right") if visual.get("arrow_enabled", True) else "right"
+            arrow_sz = int(visual.get("arrow_size", 36)) if visual.get("arrow_enabled", True) else 0
 
-            self._draw_badge(cx, cy, gw, gh, badge_text, badge_bg, badge_fg)
+            self._draw_badge(cx, cy, gw, gh, badge_text, badge_bg, badge_fg, arrow_dir, arrow_sz)
 
     def _draw_arrow(self, x: int, y: int, w: int, h: int, direction: str, color: str, size: int, anim_shift: int) -> None:
-        """Desenează o săgeată plină roșie de atenționare cu vârf ascuțit."""
+        """Desenează o săgeată plină de atenționare cu vârf ascuțit."""
         if direction == "right":
             # Săgeata stă la stânga câmpului și indică spre dreapta (spre câmp)
-            tip_x = x - 10 + anim_shift
+            tip_x = x - 12 + anim_shift
             tip_y = y + (h // 2)
             tail_x = tip_x - size
             points = [
@@ -197,7 +199,7 @@ class MultiScreenOverlay:
         elif direction == "down":
             # Săgeata stă deasupra și indică în jos spre câmp
             tip_x = x + (w // 2)
-            tip_y = y - 10 + anim_shift
+            tip_y = y - 12 + anim_shift
             tail_y = tip_y - size
             points = [
                 tip_x - (size // 4), tail_y,
@@ -209,7 +211,8 @@ class MultiScreenOverlay:
                 tip_x + (size // 4), tail_y
             ]
         elif direction == "left":
-            tip_x = x + w + 10 - anim_shift
+            # Săgeata stă la dreapta câmpului și indică spre stânga (spre câmp)
+            tip_x = x + w + 12 - anim_shift
             tip_y = y + (h // 2)
             tail_x = tip_x + size
             points = [
@@ -222,8 +225,9 @@ class MultiScreenOverlay:
                 tail_x, tip_y + (size // 4)
             ]
         else: # "up"
+            # Săgeata stă sub câmp și indică în sus spre câmp
             tip_x = x + (w // 2)
-            tip_y = y + h + 10 - anim_shift
+            tip_y = y + h + 12 - anim_shift
             tail_y = tip_y + size
             points = [
                 tip_x - (size // 4), tail_y,
@@ -237,17 +241,26 @@ class MultiScreenOverlay:
 
         self.canvas.create_polygon(points, fill=color, outline="#8B0000", width=1)
 
-    def _draw_badge(self, x: int, y: int, w: int, h: int, text: str, bg_color: str, fg_color: str) -> None:
-        """Desenează un badge etichetă elegant și lizibil deasupra câmpului."""
+    def _draw_badge(self, x: int, y: int, w: int, h: int, text: str, bg_color: str, fg_color: str, arrow_dir: str = "right", arrow_sz: int = 0) -> None:
+        """Desenează un badge etichetă elegant, evitând suprapunerea cu săgeata."""
         font = ("Segoe UI", 10, "bold")
         badge_h = 24
         pad_x = 10
         approx_w = max(100, len(text) * 8 + pad_x * 2)
 
         bx = x
-        by = y - badge_h - 6
+        if arrow_dir == "down" and arrow_sz > 0:
+            # Săgeata e deasupra câmpului -> punem badge-ul deasupra săgeții ca să nu se suprapună
+            by = y - arrow_sz - badge_h - 18
+        elif arrow_dir == "up" and arrow_sz > 0:
+            # Săgeata e dedesubt -> punem badge-ul deasupra câmpului
+            by = y - badge_h - 6
+        else:
+            by = y - badge_h - 6
+
+        # Dacă depășește ecranul sus, îl coborâm dedesubt
         if by < 5:
-            by = y + h + 6
+            by = y + h + 8 + (arrow_sz if arrow_dir == "up" else 0)
 
         # Dreptunghi fundal cu colțuri
         self.canvas.create_rectangle(

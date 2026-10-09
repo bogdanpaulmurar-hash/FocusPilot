@@ -58,19 +58,27 @@ class RuleEngine:
         extra_text = window_info.get("extra_text", "")
 
         # 1. Filtru Proces (ex: msedge.exe, chrome.exe)
-        target_proc = trigger.get("process_name", "").strip()
-        if target_proc and not cls.match_string(target_proc, proc_name, case_sensitive=False):
-            return False
+        # Dacă este menționat browser (msedge.exe sau chrome.exe), acceptăm ambele browsere dacă procesul e browser
+        target_proc = trigger.get("process_name", "").strip().lower()
+        if target_proc and target_proc != "orice proces":
+            if target_proc in ["msedge.exe", "chrome.exe", "firefox.exe", "browser"]:
+                if proc_name not in ["msedge.exe", "chrome.exe", "firefox.exe"]:
+                    return False
+            else:
+                if not cls.match_string(target_proc, proc_name, case_sensitive=False):
+                    return False
 
         # 2. Filtru Titlu Fereastră
         title_pattern = trigger.get("window_title_pattern", "").strip()
-        if title_pattern and not cls.match_string(title_pattern, win_title, case_sensitive=False):
-            return False
+        if title_pattern and title_pattern != "*":
+            # Asigurăm wildcard implicit dacă utilizatorul a introdus doar un cuvânt cheie
+            norm_pattern = title_pattern if ("*" in title_pattern or "?" in title_pattern) else f"*{title_pattern}*"
+            if not cls.match_string(norm_pattern, win_title, case_sensitive=False):
+                return False
 
         # 3. Filtru Text / Condiție Stil Excel
         search_text = trigger.get("search_text", "").strip()
         if not search_text:
-            # Dacă nu s-a specificat text, potrivirea pe fereastră/titlu este suficientă
             return True
 
         text_condition = trigger.get("text_condition", "contains")
@@ -80,25 +88,42 @@ class RuleEngine:
         # Căutăm atât în titlu, cât și în orice text extras disponibil
         combined_haystack = f"{win_title} {extra_text}"
 
+        # Curățare caractere emoji speciale pentru comparație tolerantă dacă e cazul
+        def clean_txt(s: str) -> str:
+            return re.sub(r"[^\w\s]", " ", s)
+
+        matched = False
         if text_condition == "equals":
             if case_sensitive:
-                return search_text == win_title or search_text == extra_text
-            return search_text.lower() == win_title.lower() or search_text.lower() == extra_text.lower()
+                matched = (search_text == win_title or search_text == extra_text)
+            else:
+                matched = (search_text.lower() == win_title.lower() or search_text.lower() == extra_text.lower())
 
         elif text_condition == "starts_with":
             flags = 0 if case_sensitive else re.IGNORECASE
-            return bool(re.match(r"^" + re.escape(search_text), combined_haystack, flags))
+            matched = bool(re.match(r"^" + re.escape(search_text), combined_haystack, flags))
 
         elif text_condition == "constellation":
-            # Toate cuvintele separate prin ';' sau ',' trebuie să fie prezente
             keywords = [k.strip() for k in re.split(r"[;,]+", search_text) if k.strip()]
+            all_found = True
             for kw in keywords:
                 if not cls.match_string(kw, combined_haystack, case_sensitive=case_sensitive):
-                    return False
-            return True
+                    all_found = False
+                    break
+            matched = all_found
 
         else: # "contains" sau implicit
-            return cls.match_string(search_text, combined_haystack, is_regex=is_regex, case_sensitive=case_sensitive)
+            # Verificare directă
+            matched = cls.match_string(search_text, combined_haystack, is_regex=is_regex, case_sensitive=case_sensitive)
+            # Dacă nu s-a potrivit exact (de exemplu din cauza caracterelor emoji / spații), verificăm textul curățat
+            if not matched and not is_regex and len(search_text) > 3:
+                c_search = clean_txt(search_text).lower().strip()
+                c_haystack = clean_txt(combined_haystack).lower()
+                words = [w for w in c_search.split() if len(w) > 2]
+                if words and all(w in c_haystack for w in words):
+                    matched = True
+
+        return matched
 
     @classmethod
     def calculate_cue_geometry(cls, rule: Dict[str, Any], window_info: Dict[str, Any], virtual_screen: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:

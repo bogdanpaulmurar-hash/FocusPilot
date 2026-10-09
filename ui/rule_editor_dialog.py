@@ -150,10 +150,18 @@ class RuleEditorDialog:
         self.ent_win_title.insert(0, self.rule.get("trigger", {}).get("window_title_pattern", "*"))
         self.ent_win_title.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
+        # URL Browser / Adresă Web
+        r_url = tk.Frame(sec2, bg=self.theme["bg_card"])
+        r_url.pack(fill="x", pady=4)
+        tk.Label(r_url, text="Link / URL Pagină Web:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
+        self.ent_url = tk.Entry(r_url, font=FONT_BODY, bg=self.theme["bg_input"], fg=self.theme["fg_primary"], insertbackground=self.theme["fg_primary"], relief="flat")
+        self.ent_url.insert(0, self.rule.get("trigger", {}).get("url_pattern", ""))
+        self.ent_url.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
         # Proces (ex: msedge.exe)
         r_proc = tk.Frame(sec2, bg=self.theme["bg_card"])
         r_proc.pack(fill="x", pady=4)
-        tk.Label(r_proc, text="Nume Proces (opțional):", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
+        tk.Label(r_proc, text="Nume Proces / Aplicație:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
         self.ent_proc = tk.Entry(r_proc, font=FONT_BODY, bg=self.theme["bg_input"], fg=self.theme["fg_primary"], insertbackground=self.theme["fg_primary"], relief="flat")
         self.ent_proc.insert(0, self.rule.get("trigger", {}).get("process_name", ""))
         self.ent_proc.pack(side="left", fill="x", expand=True, padx=(8, 0))
@@ -305,16 +313,38 @@ class RuleEditorDialog:
             self._update_preview()
 
     def _start_picker(self) -> None:
+        # Ascundem atât dialogul de editare cât și fereastra părinte Dashboard
         self.dialog.withdraw()
-        picker = InteractivePicker(self.parent, self._on_picked)
+        try:
+            self.parent.withdraw()
+        except Exception:
+            pass
+
+        picker = InteractivePicker(self.parent, self._on_picked, on_cancel=self._on_picker_cancelled)
         picker.start()
 
-    def _on_picked(self, data: Dict[str, Any]) -> None:
+    def _on_picker_cancelled(self) -> None:
+        # Readucem ferestrele la anulare cu ESC
+        try:
+            self.parent.deiconify()
+        except Exception:
+            pass
         self.dialog.deiconify()
+        self.dialog.lift()
+        self.dialog.focus_force()
+
+    def _on_picked(self, data: Dict[str, Any]) -> None:
+        try:
+            self.parent.deiconify()
+        except Exception:
+            pass
+        self.dialog.deiconify()
+        self.dialog.lift()
+        self.dialog.focus_force()
         # Populăm automat câmpurile pe baza selecției utilizatorului
         if data.get("window_title"):
             self.ent_win_title.delete(0, tk.END)
-            self.ent_win_title.insert(0, f"*{data['window_title'][:25]}*")
+            self.ent_win_title.insert(0, f"*{data['window_title'][:30]}*")
 
         if "region" not in self.rule:
             self.rule["region"] = {}
@@ -360,30 +390,40 @@ class RuleEditorDialog:
             )
 
         # 2. Săgeată indicatoare
+        arrow_sz = 26 if self.var_arrow.get() else 0
+        arrow_dir = self.var_arrow_dir.get() if self.var_arrow.get() else "right"
+
         if self.var_arrow.get():
-            direction = self.var_arrow_dir.get()
             col = self.arrow_color
-            sz = 26
-            if direction == "right":
-                tip_x = box_x - 10
+            sz = arrow_sz
+            if arrow_dir == "right":
+                tip_x = box_x - 12
                 tip_y = box_y + (box_h // 2)
                 pts = [tip_x - sz, tip_y - 6, tip_x - 12, tip_y - 6, tip_x - 12, tip_y - 12, tip_x, tip_y, tip_x - 12, tip_y + 12, tip_x - 12, tip_y + 6, tip_x - sz, tip_y + 6]
-            elif direction == "down":
+            elif arrow_dir == "down":
                 tip_x = box_x + (box_w // 2)
-                tip_y = box_y - 8
+                tip_y = box_y - 12
                 pts = [tip_x - 6, tip_y - sz, tip_x - 6, tip_y - 12, tip_x - 12, tip_y - 12, tip_x, tip_y, tip_x + 12, tip_y - 12, tip_x + 6, tip_y - 12, tip_x + 6, tip_y - sz]
-            else:
-                tip_x = box_x - 10
+            elif arrow_dir == "left":
+                tip_x = box_x + box_w + 12
                 tip_y = box_y + (box_h // 2)
-                pts = [tip_x - sz, tip_y - 6, tip_x, tip_y, tip_x - sz, tip_y + 6]
+                pts = [tip_x + sz, tip_y - 6, tip_x + 12, tip_y - 6, tip_x + 12, tip_y - 12, tip_x, tip_y, tip_x + 12, tip_y + 12, tip_x + 12, tip_y + 6, tip_x + sz, tip_y + 6]
+            else: # up
+                tip_x = box_x + (box_w // 2)
+                tip_y = box_y + box_h + 12
+                pts = [tip_x - 6, tip_y + sz, tip_x - 6, tip_y + 12, tip_x - 12, tip_y + 12, tip_x, tip_y, tip_x + 12, tip_y + 12, tip_x + 6, tip_y + 12, tip_x + 6, tip_y + sz]
 
             self.preview_canvas.create_polygon(pts, fill=col, outline="#8B0000", width=1)
 
-        # 3. Badge Text
+        # 3. Badge Text (fără suprapunere peste săgeată)
         if self.var_badge.get():
             badge_text = self.ent_badge_text.get() or "⚠️ ATENȚIE!"
             bx = box_x
-            by = box_y - 24
+            if arrow_dir == "down" and arrow_sz > 0:
+                by = box_y - arrow_sz - 30
+            else:
+                by = box_y - 26
+
             approx_w = max(100, len(badge_text) * 8 + 16)
             self.preview_canvas.create_rectangle(bx, by, bx + approx_w, by + 20, fill="#D90429", outline="#FFFFFF", width=1)
             self.preview_canvas.create_text(bx + (approx_w // 2), by + 10, text=badge_text, fill="#FFFFFF", font=FONT_SMALL)
@@ -400,6 +440,7 @@ class RuleEditorDialog:
         if "trigger" not in self.rule:
             self.rule["trigger"] = {}
         self.rule["trigger"]["window_title_pattern"] = self.ent_win_title.get().strip() or "*"
+        self.rule["trigger"]["url_pattern"] = self.ent_url.get().strip()
         self.rule["trigger"]["process_name"] = self.ent_proc.get().strip()
         self.rule["trigger"]["text_condition"] = self.var_cond.get()
         self.rule["trigger"]["search_text"] = self.ent_search_text.get().strip()

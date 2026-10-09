@@ -14,22 +14,22 @@
 
     const RULES = [
   {
-    "id": "rule_sample_01",
-    "name": "Exemplu: Câmpuri Critice Portal Web",
+    "id": "rule_6b16e036",
+    "name": "ticket classification TIMA",
     "enabled": true,
     "trigger": {
       "target_type": "browser_or_window",
-      "window_title_pattern": "*Siemens*",
+      "window_title_pattern": "Change TIMA Ticket catgegory",
       "url_pattern": "*",
       "process_name": "msedge.exe",
       "text_condition": "contains",
-      "search_text": "Obligatoriu",
+      "search_text": "🚨[GSP NEW Ticket] ⚠️ Please change category ‼️",
       "case_sensitive": false,
       "is_regex": false
     },
     "visual_cue": {
       "box_enabled": true,
-      "border_color": "#FF1A1A",
+      "border_color": "#FF0000",
       "border_width": 3,
       "fill_color": "#FF3333",
       "fill_opacity": 0.2,
@@ -38,7 +38,7 @@
       "arrow_color": "#FF0000",
       "arrow_size": 36,
       "badge_enabled": true,
-      "badge_text": "⚠️ MODIFICĂ / VERIFICĂ ACUM!",
+      "badge_text": "⚠️ MODIFICĂ AICI!",
       "badge_bg": "#D90429",
       "badge_fg": "#FFFFFF",
       "pulse_animation": true
@@ -49,45 +49,6 @@
       "rel_y": 0.3,
       "width": 350,
       "height": 60,
-      "monitor_index": -1
-    }
-  },
-  {
-    "id": "rule_sample_02",
-    "name": "Exemplu: Atenționare Text Critic (Generic)",
-    "enabled": true,
-    "trigger": {
-      "target_type": "any_window",
-      "window_title_pattern": "*",
-      "url_pattern": "",
-      "process_name": "",
-      "text_condition": "contains",
-      "search_text": "CONFIDENTIAL",
-      "case_sensitive": false,
-      "is_regex": false
-    },
-    "visual_cue": {
-      "box_enabled": true,
-      "border_color": "#EB780A",
-      "border_width": 4,
-      "fill_color": "#FFA500",
-      "fill_opacity": 0.15,
-      "arrow_enabled": true,
-      "arrow_direction": "down",
-      "arrow_color": "#EB780A",
-      "arrow_size": 32,
-      "badge_enabled": true,
-      "badge_text": "🔒 SECTIUNE CRITICA",
-      "badge_bg": "#EB780A",
-      "badge_fg": "#FFFFFF",
-      "pulse_animation": true
-    },
-    "region": {
-      "mode": "entire_window",
-      "rel_x": 0.05,
-      "rel_y": 0.05,
-      "width": 400,
-      "height": 70,
       "monitor_index": -1
     }
   }

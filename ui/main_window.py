@@ -187,9 +187,24 @@ class MainWindow:
         card = tk.Frame(self.rules_frame, bg=self.theme["bg_card"], bd=1, relief="solid", padx=12, pady=10)
         card.pack(fill="x", pady=6)
 
+        # Dublu-clic pe card deschide direct dialogul de editare
+        card.bind("<Double-Button-1>", lambda e, r=rule: self._edit_rule(r))
+
         # Rândul 1: Toggle activ + Nume + Butoane acțiune
         top_row = tk.Frame(card, bg=self.theme["bg_card"])
         top_row.pack(fill="x")
+        top_row.bind("<Double-Button-1>", lambda e, r=rule: self._edit_rule(r))
+
+        # Badge status vizual clar: [ACTIV] sau [INACTIV]
+        status_bg = self.theme["green"] if is_enabled else self.theme["bg_hover"]
+        status_fg = "#FFFFFF" if is_enabled else self.theme["fg_muted"]
+        status_txt = "● ACTIV" if is_enabled else "○ OPRIT"
+        lbl_badge_status = tk.Label(
+            top_row, text=status_txt, font=FONT_SMALL, bg=status_bg, fg=status_fg,
+            padx=8, pady=2, cursor="hand2"
+        )
+        lbl_badge_status.pack(side="left", padx=(0, 8))
+        lbl_badge_status.bind("<Button-1>", lambda e, rid=rule_id: self._toggle_rule(rid))
 
         var_chk = tk.BooleanVar(value=is_enabled)
         chk = tk.Checkbutton(
@@ -197,28 +212,29 @@ class MainWindow:
             font=FONT_BODY_BOLD, bg=self.theme["bg_card"],
             fg=self.theme["fg_primary"] if is_enabled else self.theme["fg_muted"],
             selectcolor=self.theme["bg_input"], activebackground=self.theme["bg_card"],
-            command=lambda rid=rule_id: self._toggle_rule(rid)
+            cursor="hand2", command=lambda rid=rule_id: self._toggle_rule(rid)
         )
         chk.pack(side="left")
+        chk.bind("<Double-Button-1>", lambda e, r=rule: self._edit_rule(r))
 
         # Butoane acțiune card
         btn_del = tk.Button(
             top_row, text="🗑️", font=FONT_ICON, bg=self.theme["bg_card"],
-            fg=self.theme["alert_red"], relief="flat", bd=0, padx=6,
+            fg=self.theme["alert_red"], relief="flat", bd=0, padx=6, cursor="hand2",
             command=lambda rid=rule_id: self._delete_rule(rid)
         )
         btn_del.pack(side="right")
 
         btn_edit = tk.Button(
             top_row, text="✏️ Editează", font=FONT_SMALL, bg=self.theme["bg_hover"],
-            fg=self.theme["fg_primary"], relief="flat", padx=10, pady=2,
+            fg=self.theme["fg_primary"], relief="flat", padx=10, pady=2, cursor="hand2",
             command=lambda r=rule: self._edit_rule(r)
         )
         btn_edit.pack(side="right", padx=6)
 
         btn_test = tk.Button(
             top_row, text="🎯 Testează", font=FONT_SMALL, bg=self.theme["bg_hover"],
-            fg=self.theme["accent"], relief="flat", padx=10, pady=2,
+            fg=self.theme["accent"], relief="flat", padx=10, pady=2, cursor="hand2",
             command=lambda r=rule: self.on_test_cue(r)
         )
         btn_test.pack(side="right", padx=6)
@@ -226,21 +242,27 @@ class MainWindow:
         # Rândul 2: Informații Declanșator (Trigger info)
         trigger = rule.get("trigger", {})
         win_pat = trigger.get("window_title_pattern", "*")
+        url_pat = trigger.get("url_pattern", "")
         proc = trigger.get("process_name", "") or "Orice proces"
         txt = trigger.get("search_text", "")
         cond = trigger.get("text_condition", "contains")
 
         info_row = tk.Frame(card, bg=self.theme["bg_card"])
         info_row.pack(fill="x", pady=(6, 0))
+        info_row.bind("<Double-Button-1>", lambda e, r=rule: self._edit_rule(r))
 
         info_text = f"📍 Țintă: [{proc}] {win_pat}"
+        if url_pat and url_pat != "*":
+            info_text += f" | 🔗 URL: {url_pat}"
         if txt:
-            info_text += f"  |  🔍 Condiție ({cond}): \"{txt}\""
+            info_text += f"  |  🔍 Condiție ({cond}): \"{txt[:35]}\""
 
-        tk.Label(
+        lbl_info = tk.Label(
             info_row, text=info_text, font=FONT_SMALL,
             bg=self.theme["bg_card"], fg=self.theme["fg_secondary"]
-        ).pack(side="left")
+        )
+        lbl_info.pack(side="left")
+        lbl_info.bind("<Double-Button-1>", lambda e, r=rule: self._edit_rule(r))
 
         # Rândul 3: Rezumat Repere Vizuale (Badge-uri stilizate)
         cue = rule.get("visual_cue", {})

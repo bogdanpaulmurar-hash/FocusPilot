@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 class InteractivePicker:
     """Overlay de selecție ecran cu reticul (crosshair) și dreptunghi de selecție."""
 
-    def __init__(self, master: tk.Tk, on_picked: Callable[[Dict[str, Any]], None]):
+    def __init__(self, master: tk.Tk, on_picked: Callable[[Dict[str, Any]], None], on_cancel: Optional[Callable[[], None]] = None):
         self.master = master
         self.on_picked = on_picked
+        self.on_cancel = on_cancel
 
         self.overlay: Optional[tk.Toplevel] = None
         self.canvas: Optional[tk.Canvas] = None
@@ -49,7 +50,7 @@ class InteractivePicker:
         self.overlay.title("FocusPilot_Picker")
         self.overlay.overrideredirect(True)
         self.overlay.attributes("-topmost", True)
-        self.overlay.attributes("-alpha", 0.35)
+        self.overlay.attributes("-alpha", 0.30)
         self.overlay.config(cursor="crosshair")
 
         geo = f"{self._virt_w}x{self._virt_h}+{self._virt_x}+{self._virt_y}"
@@ -66,14 +67,14 @@ class InteractivePicker:
 
         # Mesaj informativ centrat pe monitorul principal
         info_x = self._virt_w // 2
-        info_y = 60
+        info_y = 50
         self.canvas.create_rectangle(
-            info_x - 300, info_y - 25, info_x + 300, info_y + 25,
+            info_x - 320, info_y - 25, info_x + 320, info_y + 25,
             fill="#00646E", outline="#00A3A6", width=2
         )
         self.canvas.create_text(
             info_x, info_y,
-            text="🎯 Trageți un dreptunghi peste zona dorită sau apăsați ESC pentru anulare",
+            text="🎯 Trageți un dreptunghi cu mouse-ul peste câmpul dorit  |  [ESC] Anulare",
             fill="#FFFFFF",
             font=("Segoe UI", 11, "bold")
         )
@@ -81,7 +82,13 @@ class InteractivePicker:
         self.canvas.bind("<ButtonPress-1>", self._on_button_down)
         self.canvas.bind("<B1-Motion>", self._on_mouse_move)
         self.canvas.bind("<ButtonRelease-1>", self._on_button_up)
+
+        # Asigurăm prinderea tastelor Escape și tastelor generale
+        self.overlay.bind_all("<Escape>", lambda e: self.cancel())
         self.overlay.bind("<Escape>", lambda e: self.cancel())
+        self.canvas.bind("<Escape>", lambda e: self.cancel())
+
+        self.overlay.focus_force()
 
     def _on_button_down(self, event) -> None:
         self.start_x = event.x
@@ -143,9 +150,15 @@ class InteractivePicker:
 
     def cancel(self) -> None:
         self._cleanup()
+        if self.on_cancel:
+            self.on_cancel()
 
     def _cleanup(self) -> None:
         if self.overlay:
+            try:
+                self.overlay.unbind_all("<Escape>")
+            except Exception:
+                pass
             self.overlay.destroy()
             self.overlay = None
             self.canvas = None

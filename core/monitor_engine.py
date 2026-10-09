@@ -33,6 +33,25 @@ def get_virtual_screen_bounds() -> Tuple[int, int, int, int]:
         return (0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1))
 
 
+def get_process_name_native(pid: int) -> str:
+    """Obține numele procesului direct prin Windows API (fără a depinde de psutil)."""
+    import ctypes
+    try:
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if h:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = ctypes.c_ulong(1024)
+            res = ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+            ctypes.windll.kernel32.CloseHandle(h)
+            if res:
+                import os
+                return os.path.basename(buf.value).lower()
+    except Exception:
+        pass
+    return ""
+
+
 def get_foreground_window_info() -> Optional[Dict[str, Any]]:
     """Extrage informații complete despre fereastra aflată în prim-plan."""
     try:
@@ -49,14 +68,7 @@ def get_foreground_window_info() -> Optional[Dict[str, Any]]:
 
         # Extrage procesul
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        proc_name = ""
-        try:
-            import psutil
-            proc = psutil.Process(pid)
-            proc_name = proc.name().lower()
-        except Exception:
-            # Fallback fără psutil dacă nu este instalat
-            proc_name = "unknown.exe"
+        proc_name = get_process_name_native(pid)
 
         return {
             "hwnd": hwnd,
@@ -172,6 +184,10 @@ class MonitorEngine:
 
                 # 3. Notifică doar dacă s-a schimbat lista de reguli potrivite
                 if matched_ids != self._last_active_rules_ids:
+                    if matched_ids:
+                        logger.info(f"Reguli declanșate ({len(matched_ids)}): {matched_ids} pe fereastra '{win_info.get('title')}' [{win_info.get('process_name')}]")
+                    else:
+                        logger.info(f"Nicio regulă activă pe fereastra '{win_info.get('title')}' [{win_info.get('process_name')}]. Ascund repere.")
                     self._last_active_rules_ids = matched_ids
                     if self.on_cues_changed:
                         self.on_cues_changed(matched_cues)
