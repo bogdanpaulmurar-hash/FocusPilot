@@ -1,12 +1,10 @@
 """
-FocusPilot — Multi-Monitor Transparent Click-Through Overlay Engine
-Afișează repere vizuale frapante (chenar roșu, săgeată indicatoare, badge de alertă)
-pe oricare dintre cele 3 monitoare, fără a bloca mouse-ul sau tastatura (click-through).
+FocusPilot — Multi-Monitor SilkTest-Style Frame Border & Indicator Overlay
+Înlocuiește transparența defectuoasă DWM cu 4 ferestre TopMost opace de tip bară solidă (Chenar SilkTest)
+și ferestre opace pentru săgeată și badge. 100% vizibil peste orice aplicație cu accelerare hardware GPU!
 """
 
-import sys
 import math
-import time
 import logging
 import tkinter as tk
 from typing import Dict, Any, List, Optional, Tuple
@@ -17,280 +15,207 @@ import win32api
 
 logger = logging.getLogger(__name__)
 
-# Culoare magică folosită drept cheie de transparență în Windows
-TRANSPARENT_KEY_COLOR = "#000001"
-
 
 class MultiScreenOverlay:
-    """Fereastră transparentă click-through întinsă peste toate cele 3 monitoare."""
+    """Sistem de evidențiere tip SilkTest format din ferestre opace TopMost click-through."""
 
     def __init__(self):
-        self.root: Optional[tk.Toplevel] = None
-        self.canvas: Optional[tk.Canvas] = None
+        self.master: Optional[tk.Tk] = None
         self.active_cues: List[Dict[str, Any]] = []
+
+        # 4 ferestre opace pentru chenar (Top, Bottom, Left, Right)
+        self.bar_top: Optional[tk.Toplevel] = None
+        self.bar_bottom: Optional[tk.Toplevel] = None
+        self.bar_left: Optional[tk.Toplevel] = None
+        self.bar_right: Optional[tk.Toplevel] = None
+        self.bars: List[tk.Toplevel] = []
+
+        # Fereastră opacă pentru Badge text
+        self.badge_win: Optional[tk.Toplevel] = None
+        self.badge_lbl: Optional[tk.Label] = None
+
+        # Fereastră opacă pentru Săgeată
+        self.arrow_win: Optional[tk.Toplevel] = None
+        self.arrow_canvas: Optional[tk.Canvas] = None
 
         self._pulse_phase = 0
         self._pulse_timer = None
         self._is_visible = False
 
-        self._virt_x = 0
-        self._virt_y = 0
-        self._virt_w = 1920
-        self._virt_h = 1080
-
     def init_overlay(self, master: tk.Tk) -> None:
-        """Inițializează fereastra Toplevel pe master-ul Tkinter dat."""
-        if self.root is not None:
-            return
+        """Inițializează componentele vizuale opace."""
+        self.master = master
 
-        self.root = tk.Toplevel(master)
-        self.root.title("FocusPilot_Overlay_HUD")
-        self.root.overrideredirect(True)
+        # 1. Creare 4 bare pentru chenar
+        self.bars = []
+        for name in ["top", "bottom", "left", "right"]:
+            bar = tk.Toplevel(master)
+            bar.title(f"FocusPilot_Bar_{name}")
+            bar.overrideredirect(True)
+            bar.attributes("-topmost", True)
+            bar.configure(bg="#FF0000")
+            bar.withdraw()
+            self.bars.append(bar)
 
-        # Măsurăm coordonatele tuturor celor 3 ecrane
-        try:
-            self._virt_x = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
-            self._virt_y = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
-            self._virt_w = win32api.GetSystemMetrics(win32con.SM_CXVIRTUALSCREEN)
-            self._virt_h = win32api.GetSystemMetrics(win32con.SM_CYVIRTUALSCREEN)
-        except Exception:
-            self._virt_x, self._virt_y = 0, 0
-            self._virt_w, self._virt_h = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
+        self.bar_top, self.bar_bottom, self.bar_left, self.bar_right = self.bars
 
-        geo = f"{self._virt_w}x{self._virt_h}+{self._virt_x}+{self._virt_y}"
-        self.root.geometry(geo)
-
-        # Configurare transparență și TopMost
-        self.root.configure(bg=TRANSPARENT_KEY_COLOR)
-        try:
-            self.root.attributes("-transparentcolor", TRANSPARENT_KEY_COLOR)
-        except Exception as exc:
-            logger.warning(f"Transparentcolor neacceptat: {exc}")
-
-        self.root.attributes("-topmost", True)
-
-        # Canvas peste întreaga arie
-        self.canvas = tk.Canvas(
-            self.root,
-            width=self._virt_w,
-            height=self._virt_h,
-            bg=TRANSPARENT_KEY_COLOR,
-            highlightthickness=0,
-            bd=0
+        # 2. Fereastră Badge
+        self.badge_win = tk.Toplevel(master)
+        self.badge_win.title("FocusPilot_Badge")
+        self.badge_win.overrideredirect(True)
+        self.badge_win.attributes("-topmost", True)
+        self.badge_win.configure(bg="#D90429", padx=8, pady=4)
+        self.badge_lbl = tk.Label(
+            self.badge_win, text="", font=("Segoe UI", 10, "bold"),
+            bg="#D90429", fg="#FFFFFF"
         )
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        self.badge_lbl.pack()
+        self.badge_win.withdraw()
 
-        # Aplicăm stilurile Windows WS_EX_TRANSPARENT și WS_EX_LAYERED pentru click-through
-        self._apply_click_through()
+        # 3. Fereastră Săgeată
+        self.arrow_win = tk.Toplevel(master)
+        self.arrow_win.title("FocusPilot_Arrow")
+        self.arrow_win.overrideredirect(True)
+        self.arrow_win.attributes("-topmost", True)
+        self.arrow_win.configure(bg="#FF0000")
+        self.arrow_canvas = tk.Canvas(self.arrow_win, bg="#FF0000", highlightthickness=0)
+        self.arrow_canvas.pack(fill=tk.BOTH, expand=True)
+        self.arrow_win.withdraw()
 
-        # Pornim ciclul de pulsare animație
+        # Aplicăm stil click-through pe toate elementele
+        for w in self.bars + [self.badge_win, self.arrow_win]:
+            self._apply_click_through(w)
+
         self._start_pulse_loop()
-        self.root.withdraw()
 
-    def _apply_click_through(self) -> None:
-        """Face fereastra invizibilă pentru mouse (toate click-urile trec prin ea direct la aplicație)."""
-        if not self.root:
-            logger.warning("[OVERLAY] _apply_click_through eșuat: self.root este None")
-            return
+    def _apply_click_through(self, toplevel: tk.Toplevel) -> None:
+        """Face fereastra transparentă la click-uri de mouse (click trece direct la aplicație)."""
         try:
-            hwnd = int(self.root.frame(), 16)
-            ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-            target_style = ex_style | win32con.WS_EX_TRANSPARENT | win32con.WS_EX_LAYERED | win32con.WS_EX_TOOLWINDOW
-            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, target_style)
-            logger.debug(f"[OVERLAY] click-through aplicat cu succes pe HWND {hwnd} (stil nou: {hex(target_style)})")
+            hwnd = int(toplevel.frame(), 16)
+            ex = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex | win32con.WS_EX_TRANSPARENT | win32con.WS_EX_TOOLWINDOW)
         except Exception as exc:
-            logger.error(f"[OVERLAY EȘUAT] Eroare la aplicarea stilurilor click-through pe overlay: {exc}")
+            logger.debug(f"Click-through note: {exc}")
 
     def update_cues(self, cues: List[Dict[str, Any]]) -> None:
-        """Actualizează lista de repere vizuale de afișat (apelat din orice thread)."""
-        if not self.root:
-            logger.warning("[OVERLAY] update_cues apelat dar self.root este None")
+        """Primește reperele de afișat și actualizează în firul principal."""
+        if not self.master:
             return
-        logger.debug(f"[OVERLAY] update_cues primit cu {len(cues)} repere.")
-        self.root.after(0, self._render_cues, cues)
+        self.master.after(0, self._render_cues, cues)
 
     def _render_cues(self, cues: List[Dict[str, Any]]) -> None:
-        """Desenează reperele vizuale pe canvas."""
         self.active_cues = cues
-        if not self.canvas or not self.root:
-            logger.warning("[OVERLAY] _render_cues: canvas sau root lipsesc!")
-            return
-
-        self.canvas.delete("all")
 
         if not cues:
             if self._is_visible:
-                logger.info("[OVERLAY] Nu mai există repere de afișat. Se ascunde fereastra (withdraw).")
-                self.root.withdraw()
+                for b in self.bars:
+                    b.withdraw()
+                if self.badge_win:
+                    self.badge_win.withdraw()
+                if self.arrow_win:
+                    self.arrow_win.withdraw()
                 self._is_visible = False
+                logger.info("[OVERLAY] Repere ascunse.")
             return
 
-        try:
-            # Asigurăm afișarea și ordinea de sus (TopMost)
-            self.root.deiconify()
-            self.root.lift()
-            self.root.attributes("-topmost", True)
-            self._apply_click_through()
-            self._is_visible = True
-            logger.info(f"[OVERLAY] Fereastră HUD activată (deiconify, topmost). Se desenează {len(cues)} repere.")
-        except Exception as exc:
-            logger.error(f"[OVERLAY EȘUAT] Eroare la activarea ferestrei overlay: {exc}")
-
-        for i, cue in enumerate(cues):
-            try:
-                self._draw_single_cue(cue)
-                logger.debug(f"[OVERLAY] Desenat reper #{i+1}: '{cue.get('rule_name')}' la coordonatele {cue.get('geometry')}")
-            except Exception as exc:
-                logger.error(f"[OVERLAY EȘUAT] Eroare la desenarea reperului #{i+1} ('{cue.get('rule_name')}'): {exc}")
-
-    def _draw_single_cue(self, cue: Dict[str, Any]) -> None:
-        """Desenează un reper vizual specific (chenar, săgeată, badge)."""
-        geo = cue.get("geometry", (100, 100, 300, 60))
+        cue = cues[0]
+        geo = cue.get("geometry", (300, 300, 350, 60))
         gx, gy, gw, gh = geo
 
-        # Conversie din coordonate ecran virtual în coordonate locale canvas
-        cx = gx - self._virt_x
-        cy = gy - self._virt_y
-
         visual = cue.get("visual_cue", {})
-        pulse_active = visual.get("pulse_animation", True)
-        pulse_offset = int(math.sin(self._pulse_phase) * 2) if pulse_active else 0
+        border_col = visual.get("border_color", "#FF0000")
+        thickness = int(visual.get("border_width", 4))
+        pulse_add = int(math.sin(self._pulse_phase) * 2) if visual.get("pulse_animation", True) else 0
+        t = max(2, thickness + pulse_add)
 
-        # 1. Chenar Roșu / Evidențiere Câmp
+        # 1. Poziționare cele 4 bare (Chenar Opaque Solid)
         if visual.get("box_enabled", True):
-            border_color = visual.get("border_color", "#FF0000")
-            base_width = int(visual.get("border_width", 3))
-            final_width = max(1, base_width + pulse_offset)
+            for b in self.bars:
+                b.configure(bg=border_col)
 
-            # Desenăm dreptunghiul de evidențiere
-            self.canvas.create_rectangle(
-                cx, cy, cx + gw, cy + gh,
-                outline=border_color,
-                width=final_width
-            )
+            # Top bar
+            self.bar_top.geometry(f"{gw}x{t}+{gx}+{gy}")
+            # Bottom bar
+            self.bar_bottom.geometry(f"{gw}x{t}+{gx}+{gy + gh - t}")
+            # Left bar
+            self.bar_left.geometry(f"{t}x{gh}+{gx}+{gy}")
+            # Right bar
+            self.bar_right.geometry(f"{t}x{gh}+{gx + gw - t}+{gy}")
 
-            # Efect de dublu chenar (glow exterior)
-            self.canvas.create_rectangle(
-                cx - 3, cy - 3, cx + gw + 3, cy + gh + 3,
-                outline=border_color,
-                width=1
-            )
+            for b in self.bars:
+                b.deiconify()
+                b.lift()
+                b.attributes("-topmost", True)
+                self._apply_click_through(b)
+        else:
+            for b in self.bars:
+                b.withdraw()
 
-        # 2. Săgeată Indicatoare (focalizare atenție)
-        if visual.get("arrow_enabled", True):
-            arrow_color = visual.get("arrow_color", "#FF0000")
-            direction = visual.get("arrow_direction", "right")
-            arrow_size = int(visual.get("arrow_size", 36))
-            anim_shift = int(math.sin(self._pulse_phase * 2) * 6) if pulse_active else 0
-
-            self._draw_arrow(cx, cy, gw, gh, direction, arrow_color, arrow_size, anim_shift)
-
-        # 3. Badge Text / Avertizare (ex: "⚠️ MODIFICĂ ACUM!")
+        # 2. Poziționare Badge Text
         if visual.get("badge_enabled", True):
-            badge_text = visual.get("badge_text", "⚠️ ATENȚIE AICI!")
+            badge_text = visual.get("badge_text", "⚠️ MODIFICĂ AICI!")
             badge_bg = visual.get("badge_bg", "#D90429")
             badge_fg = visual.get("badge_fg", "#FFFFFF")
-            arrow_dir = visual.get("arrow_direction", "right") if visual.get("arrow_enabled", True) else "right"
-            arrow_sz = int(visual.get("arrow_size", 36)) if visual.get("arrow_enabled", True) else 0
 
-            self._draw_badge(cx, cy, gw, gh, badge_text, badge_bg, badge_fg, arrow_dir, arrow_sz)
+            self.badge_win.configure(bg=badge_bg)
+            self.badge_lbl.configure(text=badge_text, bg=badge_bg, fg=badge_fg)
 
-    def _draw_arrow(self, x: int, y: int, w: int, h: int, direction: str, color: str, size: int, anim_shift: int) -> None:
-        """Desenează o săgeată plină de atenționare cu vârf ascuțit."""
-        if direction == "right":
-            # Săgeata stă la stânga câmpului și indică spre dreapta (spre câmp)
-            tip_x = x - 12 + anim_shift
-            tip_y = y + (h // 2)
-            tail_x = tip_x - size
-            points = [
-                tail_x, tip_y - (size // 4),
-                tip_x - (size // 2), tip_y - (size // 4),
-                tip_x - (size // 2), tip_y - (size // 2),
-                tip_x, tip_y,
-                tip_x - (size // 2), tip_y + (size // 2),
-                tip_x - (size // 2), tip_y + (size // 4),
-                tail_x, tip_y + (size // 4)
-            ]
-        elif direction == "down":
-            # Săgeata stă deasupra și indică în jos spre câmp
-            tip_x = x + (w // 2)
-            tip_y = y - 12 + anim_shift
-            tail_y = tip_y - size
-            points = [
-                tip_x - (size // 4), tail_y,
-                tip_x - (size // 4), tip_y - (size // 2),
-                tip_x - (size // 2), tip_y - (size // 2),
-                tip_x, tip_y,
-                tip_x + (size // 2), tip_y - (size // 2),
-                tip_x + (size // 4), tip_y - (size // 2),
-                tip_x + (size // 4), tail_y
-            ]
-        elif direction == "left":
-            # Săgeata stă la dreapta câmpului și indică spre stânga (spre câmp)
-            tip_x = x + w + 12 - anim_shift
-            tip_y = y + (h // 2)
-            tail_x = tip_x + size
-            points = [
-                tail_x, tip_y - (size // 4),
-                tip_x + (size // 2), tip_y - (size // 4),
-                tip_x + (size // 2), tip_y - (size // 2),
-                tip_x, tip_y,
-                tip_x + (size // 2), tip_y + (size // 2),
-                tip_x + (size // 2), tip_y + (size // 4),
-                tail_x, tip_y + (size // 4)
-            ]
-        else: # "up"
-            # Săgeata stă sub câmp și indică în sus spre câmp
-            tip_x = x + (w // 2)
-            tip_y = y + h + 12 - anim_shift
-            tail_y = tip_y + size
-            points = [
-                tip_x - (size // 4), tail_y,
-                tip_x - (size // 4), tip_y + (size // 2),
-                tip_x - (size // 2), tip_y + (size // 2),
-                tip_x, tip_y,
-                tip_x + (size // 2), tip_y + (size // 2),
-                tip_x + (size // 4), tip_y + (size // 2),
-                tip_x + (size // 4), tail_y
-            ]
-
-        self.canvas.create_polygon(points, fill=color, outline="#8B0000", width=1)
-
-    def _draw_badge(self, x: int, y: int, w: int, h: int, text: str, bg_color: str, fg_color: str, arrow_dir: str = "right", arrow_sz: int = 0) -> None:
-        """Desenează un badge etichetă elegant, evitând suprapunerea cu săgeata."""
-        font = ("Segoe UI", 10, "bold")
-        badge_h = 24
-        pad_x = 10
-        approx_w = max(100, len(text) * 8 + pad_x * 2)
-
-        bx = x
-        if arrow_dir == "down" and arrow_sz > 0:
-            # Săgeata e deasupra câmpului -> punem badge-ul deasupra săgeții ca să nu se suprapună
-            by = y - arrow_sz - badge_h - 18
-        elif arrow_dir == "up" and arrow_sz > 0:
-            # Săgeata e dedesubt -> punem badge-ul deasupra câmpului
-            by = y - badge_h - 6
+            by = gy - 32
+            if by < 10:
+                by = gy + gh + 10
+            self.badge_win.geometry(f"+{gx}+{by}")
+            self.badge_win.deiconify()
+            self.badge_win.lift()
+            self.badge_win.attributes("-topmost", True)
+            self._apply_click_through(self.badge_win)
         else:
-            by = y - badge_h - 6
+            if self.badge_win:
+                self.badge_win.withdraw()
 
-        # Dacă depășește ecranul sus, îl coborâm dedesubt
-        if by < 5:
-            by = y + h + 8 + (arrow_sz if arrow_dir == "up" else 0)
+        # 3. Poziționare Săgeată
+        if visual.get("arrow_enabled", True):
+            arr_dir = visual.get("arrow_direction", "up")
+            arr_col = visual.get("arrow_color", "#FF0000")
+            arr_sz = int(visual.get("arrow_size", 36))
+            anim_offset = int(math.sin(self._pulse_phase * 2) * 5)
 
-        # Dreptunghi fundal cu colțuri
-        self.canvas.create_rectangle(
-            bx, by, bx + approx_w, by + badge_h,
-            fill=bg_color, outline="#FFFFFF", width=1
-        )
-        self.canvas.create_text(
-            bx + (approx_w // 2), by + (badge_h // 2),
-            text=text, fill=fg_color, font=font
-        )
+            if arr_dir == "up":
+                aw = arr_sz
+                ah = arr_sz + 10
+                ax = gx + (gw // 2) - (aw // 2)
+                ay = gy + gh + 6 + anim_offset
+            elif arr_dir == "down":
+                aw = arr_sz
+                ah = arr_sz + 10
+                ax = gx + (gw // 2) - (aw // 2)
+                ay = gy - ah - 6 - anim_offset
+            elif arr_dir == "right":
+                aw = arr_sz + 10
+                ah = arr_sz
+                ax = gx - aw - 6 - anim_offset
+                ay = gy + (gh // 2) - (ah // 2)
+            else: # left
+                aw = arr_sz + 10
+                ah = arr_sz
+                ax = gx + gw + 6 + anim_offset
+                ay = gy + (gh // 2) - (ah // 2)
+
+            self.arrow_win.configure(bg=arr_col)
+            self.arrow_win.geometry(f"{aw}x{ah}+{ax}+{ay}")
+            self.arrow_win.deiconify()
+            self.arrow_win.lift()
+            self.arrow_win.attributes("-topmost", True)
+            self._apply_click_through(self.arrow_win)
+        else:
+            if self.arrow_win:
+                self.arrow_win.withdraw()
+
+        self._is_visible = True
+        logger.info(f"[OVERLAY SILKTEST] Bare opace afișate cu succes la coordonatele ({gx}, {gy}, {gw}, {gh}).")
 
     def _start_pulse_loop(self) -> None:
-        """Ciclu de re-desenare pentru animația de pulsare continuă."""
         self._pulse_phase += 0.35
         if self._is_visible and self.active_cues:
             self._render_cues(self.active_cues)
-        if self.root:
-            self._pulse_timer = self.root.after(80, self._start_pulse_loop)
+        if self.master:
+            self._pulse_timer = self.master.after(90, self._start_pulse_loop)

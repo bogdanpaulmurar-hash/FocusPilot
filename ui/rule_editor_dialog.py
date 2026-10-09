@@ -96,6 +96,14 @@ class RuleEditorDialog:
         canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
+        # Suport pentru scroll cu rotița mouse-ului oriunde în dialogul de editare
+        def _on_dialog_mousewheel(event):
+            delta = -1 * (event.delta // 120) if event.delta else 1
+            canvas.yview_scroll(delta, "units")
+
+        self.dialog.bind("<MouseWheel>", _on_dialog_mousewheel)
+        canvas.bind("<MouseWheel>", _on_dialog_mousewheel)
+
         scrollbar.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
 

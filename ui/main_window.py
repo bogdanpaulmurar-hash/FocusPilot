@@ -131,6 +131,13 @@ class MainWindow:
 
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
+        # Suport pentru scroll oriunde cu rotița mouse-ului (Mouse Wheel Scroll)
+        def _on_mousewheel(event):
+            delta = -1 * (event.delta // 120) if event.delta else 1
+            self.canvas.yview_scroll(delta, "units")
+
+        self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
         self.scrollbar.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
 
