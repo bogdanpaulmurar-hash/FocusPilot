@@ -1,0 +1,27 @@
+PROMPT MASTER PENTRU GENERARE SI CONTINUARE FOCUSPILOT
+=========================================================
+
+Nume Tool: FocusPilot
+Descriere: Tool de sistem rezident (Always Awake) cu meniu in Windows System Tray si formatare conditionala vizuala (stil Excel) peste pagini web de browser si aplicatii desktop pe 3 monitoare, cu repere vizuale proeminente (chenar rosu, sageata indicatoare pulsanta, badge-uri de avertizare).
+
+CERINTE CHEIE:
+1. Porneste fara CMD (pythonw.exe / .pyw / VBS launcher).
+2. Ruleaza permanent in tray (cu pystray) si include:
+   - Deschide Dashboard / Configurator
+   - Creeaza conditie / regula noua
+   - Submeniu cu lista conditiilor existente (toggle activ/inactiv, editare)
+   - Pauza / Reluare monitorizare
+   - Testeaza repere vizuale (Show demo overlay)
+   - Setari (Start with Windows, Hide on launch, Keep PC awake)
+   - Iesire
+3. Formatare conditionala (stil Excel):
+   - Criterii: Titlu fereastra, URL browser, Nume proces (chrome, edge, etc.), Text cautat, Regex.
+   - Actiuni vizuale: Chenar rosu / personalizabil, fundal semitransparent, sageata rosie atragatoare (stanga/dreapta/sus/jos/animata), badge de avertizare text.
+   - Suport pe 3 monitoare: Overlay transparent Windows click-through (WS_EX_TRANSPARENT | WS_EX_LAYERED) ca sa nu blocheze click-urile utilizatorului.
+   - Suport suplimentar pentru Browser prin injectare Playwright si generator de Userscript (Tampermonkey) pentru stilizare directa a DOM-ului HTML.
+4. GUI de inalta calitate cu paleta corporate Siemens:
+   - Culori: Petrol (#00646E), Teal (#00A3A6), Accent (#EB780A).
+   - Suport complet Light Mode si Dark Mode.
+5. Setari standard: Start with Windows in Registry, Hide in tray on start, Keep awake prin Windows SetThreadExecutionState.
+
+Pentru detalii complete de arhitectura si cod, vezi fisierul PROMPT_MASTER_SPECIFICATION.md din acest folder.
