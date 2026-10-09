@@ -163,6 +163,8 @@ class RuleEngine:
         else: # "window_relative" (implicit)
             rel_x = float(region.get("rel_x", 0.15))
             rel_y = float(region.get("rel_y", 0.30))
+            
+            # Folosim lățimea și înălțimea capturate din selecția utilizatorului
             w = int(region.get("width", 320))
             h = int(region.get("height", 60))
 
@@ -170,7 +172,7 @@ class RuleEngine:
             target_y = int(top + (rel_y * win_h))
 
             # Evită depășirea ferestrei
-            w = min(w, win_w - 20)
-            h = min(h, win_h - 20)
+            w = min(w, win_w - 10)
+            h = min(h, win_h - 10)
 
             return (target_x, target_y, w, h)

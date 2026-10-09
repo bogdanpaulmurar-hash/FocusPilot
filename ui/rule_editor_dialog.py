@@ -158,13 +158,26 @@ class RuleEditorDialog:
         self.ent_url.insert(0, self.rule.get("trigger", {}).get("url_pattern", ""))
         self.ent_url.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
-        # Proces (ex: msedge.exe)
+        # Proces (ex: browsere sau aplicații deschise)
         r_proc = tk.Frame(sec2, bg=self.theme["bg_card"])
         r_proc.pack(fill="x", pady=4)
-        tk.Label(r_proc, text="Nume Proces / Aplicație:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
-        self.ent_proc = tk.Entry(r_proc, font=FONT_BODY, bg=self.theme["bg_input"], fg=self.theme["fg_primary"], insertbackground=self.theme["fg_primary"], relief="flat")
-        self.ent_proc.insert(0, self.rule.get("trigger", {}).get("process_name", ""))
-        self.ent_proc.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        tk.Label(r_proc, text="Aplicație / Browser:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
+
+        # Opțiuni prestabilite și detectare aplicații deschise pe mașină
+        self.proc_options = [
+            "browser (Edge + Chrome)",
+            "msedge.exe (Microsoft Edge)",
+            "chrome.exe (Google Chrome)",
+            "Orice proces (*)",
+        ]
+        self._populate_running_apps()
+
+        current_proc = self.rule.get("trigger", {}).get("process_name", "browser (Edge + Chrome)")
+        if not current_proc:
+            current_proc = "browser (Edge + Chrome)"
+        self.var_proc = tk.StringVar(value=current_proc)
+        self.cb_proc = ttk.Combobox(r_proc, textvariable=self.var_proc, values=self.proc_options, width=32)
+        self.cb_proc.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
         # Tip Condiție Text
         r_cond = tk.Frame(sec2, bg=self.theme["bg_card"])
@@ -289,6 +302,37 @@ class RuleEditorDialog:
 
         self._update_preview()
 
+    def _populate_running_apps(self) -> None:
+        """Adaugă în dropdown aplicațiile reale deschise pe desktop."""
+        try:
+            import win32gui, win32process, ctypes, os
+            detected = set()
+            def enum_cb(h, _):
+                if win32gui.IsWindowVisible(h):
+                    t = win32gui.GetWindowText(h)
+                    if t and len(t.strip()) > 1 and t not in ["Program Manager", "Windows Input Experience"]:
+                        try:
+                            _, pid = win32process.GetWindowThreadProcessId(h)
+                            hp = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+                            if hp:
+                                buf = ctypes.create_unicode_buffer(1024)
+                                sz = ctypes.c_ulong(1024)
+                                ctypes.windll.kernel32.QueryFullProcessImageNameW(hp, 0, buf, ctypes.byref(sz))
+                                ctypes.windll.kernel32.CloseHandle(hp)
+                                exe = os.path.basename(buf.value).lower()
+                                if exe not in ["focuspilot.exe", "python.exe", "pythonw.exe", "textinputhost.exe"]:
+                                    detected.add((exe, t[:30]))
+                        except Exception:
+                            pass
+                return True
+            win32gui.EnumWindows(enum_cb, None)
+            for exe, title in sorted(detected):
+                opt = f"{exe} ({title}...)"
+                if opt not in self.proc_options:
+                    self.proc_options.append(opt)
+        except Exception:
+            pass
+
     def _create_card(self, parent: tk.Widget, title: str) -> tk.Frame:
         card = tk.Frame(parent, bg=self.theme["bg_card"], bd=1, relief="solid")
         card.pack(fill="x", padx=16, pady=6)
@@ -359,7 +403,14 @@ class RuleEditorDialog:
         # Populăm automat câmpurile pe baza selecției utilizatorului
         if data.get("window_title"):
             self.ent_win_title.delete(0, tk.END)
-            self.ent_win_title.insert(0, f"*{data['window_title'][:30]}*")
+            self.ent_win_title.insert(0, f"*{data['window_title'][:40]}*")
+
+        if data.get("process_name"):
+            detected_proc = data["process_name"].lower()
+            if detected_proc in ["chrome.exe", "msedge.exe"]:
+                self.var_proc.set("browser (Edge + Chrome)")
+            else:
+                self.var_proc.set(detected_proc)
 
         if "region" not in self.rule:
             self.rule["region"] = {}
@@ -368,9 +419,19 @@ class RuleEditorDialog:
         self.rule["region"]["rel_y"] = data.get("rel_y", 0.30)
         self.rule["region"]["width"] = data.get("width", 320)
         self.rule["region"]["height"] = data.get("height", 60)
+        self.rule["region"]["abs_x"] = data.get("abs_x", 0)
+        self.rule["region"]["abs_y"] = data.get("abs_y", 0)
         self.var_mode.set("window_relative")
 
-        messagebox.showinfo("FocusPilot", "Zona a fost capturată cu succes de pe ecran!", parent=self.dialog)
+        messagebox.showinfo(
+            "FocusPilot",
+            f"✅ Câmp capturat cu succes!\n\n"
+            f"• Fereastră: {data.get('window_title')}\n"
+            f"• Aplicație: {data.get('process_name')}\n"
+            f"• Dimensiune chenar: {data.get('width')} x {data.get('height')} px\n"
+            f"• Poziție relativă: {int(data.get('rel_x', 0)*100)}% orizontal, {int(data.get('rel_y', 0)*100)}% vertical",
+            parent=self.dialog
+        )
 
     def _update_preview(self) -> None:
         if not self.preview_canvas:
@@ -456,7 +517,20 @@ class RuleEditorDialog:
             self.rule["trigger"] = {}
         self.rule["trigger"]["window_title_pattern"] = self.ent_win_title.get().strip() or "*"
         self.rule["trigger"]["url_pattern"] = self.ent_url.get().strip()
-        self.rule["trigger"]["process_name"] = self.ent_proc.get().strip()
+        
+        proc_val = self.var_proc.get().strip()
+        # Normalizăm valoarea din dropdown
+        if "browser" in proc_val.lower():
+            self.rule["trigger"]["process_name"] = "browser"
+        elif "chrome.exe" in proc_val.lower():
+            self.rule["trigger"]["process_name"] = "chrome.exe"
+        elif "msedge.exe" in proc_val.lower():
+            self.rule["trigger"]["process_name"] = "msedge.exe"
+        elif "orice proces" in proc_val.lower():
+            self.rule["trigger"]["process_name"] = ""
+        else:
+            self.rule["trigger"]["process_name"] = proc_val.split()[0].lower()
+
         self.rule["trigger"]["text_condition"] = self.var_cond.get()
         self.rule["trigger"]["search_text"] = self.ent_search_text.get().strip()
 

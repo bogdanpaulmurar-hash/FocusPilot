@@ -23,5 +23,9 @@ CERINTE CHEIE:
    - Culori: Petrol (#00646E), Teal (#00A3A6), Accent (#EB780A).
    - Suport complet Light Mode si Dark Mode.
 5. Setari standard: Start with Windows in Registry, Hide in tray on start, Keep awake prin Windows SetThreadExecutionState.
+6. Selectie Interactiva Inteligenta (v1.2):
+   - Selector crosshair pe ecran: ascunde aplicatia, capteaza dreptunghiul si detecteaza automat fereastra reala din Z-Order, procesul (ex: chrome.exe / msedge.exe) si coordonatele exacte.
+   - Dropdown procese: optiune universala 'browser (Edge + Chrome)' care se activeaza indiferent de browserul folosit, plus lista aplicatiilor deschise in Windows.
+   - Testare pozitie exacta: butonul Testeaza deseneaza reperul vizual direct in locatia selectata de utilizator pe ecran.
 
 Pentru detalii complete de arhitectura si cod, vezi fisierul PROMPT_MASTER_SPECIFICATION.md din acest folder.

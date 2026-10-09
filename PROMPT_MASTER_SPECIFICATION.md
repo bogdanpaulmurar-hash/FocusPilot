@@ -133,7 +133,29 @@ Fiecare regulă de formatare condițională este stocată în `config.json` conf
 
 ---
 
-## 5. INSTRUCȚIUNI DE CONTINUARE PENTRU ALT MODEL AI (IF TOKENS RUN OUT)
+## 5. EXTENSIA INTELIGENTĂ DE DETECȚIE ȘI SELECTARE INTERACTIVĂ (UPDATE v1.2)
+
+1. **Interactive Snipper / Crosshair Picker (`ui/interactive_picker.py`)**:
+   - Când utilizatorul apasă *Alege Interactiv de pe Ecran*, Dashboard-ul și dialogul de configurare se ascund (`withdraw()`) și eliberează grab-ul modal (`grab_release()`).
+   - Ecranul devine complet curat, permițând utilizatorului să vadă pagina web sau aplicația țintă pe oricare din cele 3 monitoare.
+   - Trasează un dreptunghi cu mouse-ul peste câmpul, butonul sau eticheta dorită.
+   - Motorul parcurge ordinea Z (Z-Order) a ferestrelor Windows excluzând canvasul de selecție și identifică:
+     * Fereastra reală (`window_title`, `HWND`, `window_rect`)
+     * Numele procesului real (`chrome.exe`, `msedge.exe`, etc.)
+     * Coordonatele absolute (`abs_x`, `abs_y`, `width`, `height`) și relative (`rel_x`, `rel_y`, `rel_w`, `rel_h`).
+   - Apăsarea tastei `[Escape]` anulează imediat selecția și readuce ferestrele în prim-plan.
+
+2. **Dropdown Inteligent pentru Aplicații & Browsere**:
+   - Include opțiunea unificată `browser (Edge + Chrome)` — regula se aplică indiferent dacă pagina este deschisă în Microsoft Edge sau Google Chrome.
+   - Scanează automat la deschidere toate aplicațiile active pe mașină și le listează în dropdown cu nume proces și titlu fereastră pentru selecție cu un singur clic.
+
+3. **Formatare Coordonate Exacte la Testare și Rulare**:
+   - Dacă o regulă a fost capturată interactiv, butonul *Testează* desenează reperul vizual (chenar, săgeată, badge) exact la coordonatele fizice selectate de utilizator, nu doar în centrul ecranului.
+   - Evaluarea regulilor pe ferestre active (`core/rule_engine.py`) declanșează reperul când fereastra țintă este activă, chiar dacă textul din interiorul DOM-ului HTML nu se află în bara de titlu a ferestrei.
+
+---
+
+## 6. INSTRUCȚIUNI DE CONTINUARE PENTRU ALT MODEL AI (IF TOKENS RUN OUT)
 
 Dacă contextul curent se întrerupe, următorul model AI trebuie:
 1. Să citească `FocusPilot/PROMPT_MASTER_SPECIFICATION.md` și `FocusPilot/core/config_manager.py`.

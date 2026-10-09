@@ -126,37 +126,88 @@ class InteractivePicker:
         w = max(20, x2 - x1)
         h = max(20, y2 - y1)
 
-        # Detectăm fereastra de sub punctul de clic folosind Win32
-        click_screen_pt = (x1, y1)
-        hwnd = win32gui.WindowFromPoint(click_screen_pt)
-        # Obținem fereastra rădăcină (top-level)
-        root_hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT)
-        if not root_hwnd:
-            root_hwnd = hwnd
+        # Găsim fereastra reală de sub punctul selectat parcurgând Z-Order-ul Windows,
+        # excluzând fereastra noastră de selecție (FocusPilot_Picker) și Overlay-ul!
+        my_overlay_hwnd = None
+        if self.overlay:
+            try:
+                my_overlay_hwnd = int(self.overlay.frame(), 16)
+            except Exception:
+                my_overlay_hwnd = self.overlay.winfo_id()
 
-        win_title = win32gui.GetWindowText(root_hwnd)
-        win_rect = win32gui.GetWindowRect(root_hwnd) # (left, top, right, bottom)
+        center_pt = (x1 + (w // 2), y1 + (h // 2))
+        real_hwnd = self._find_real_window_under_point(center_pt, my_overlay_hwnd)
+
+        win_title = ""
+        proc_name = ""
+        win_rect = (x1, y1, x1 + w, y1 + h)
+
+        if real_hwnd and win32gui.IsWindow(real_hwnd):
+            win_title = win32gui.GetWindowText(real_hwnd)
+            win_rect = win32gui.GetWindowRect(real_hwnd)
+            proc_name = self._get_process_name_for_hwnd(real_hwnd)
+
         wl, wt, wr, wb = win_rect
-        ww = max(100, wr - wl)
-        wh = max(100, wb - wt)
+        ww = max(50, wr - wl)
+        wh = max(50, wb - wt)
 
-        # Calculăm coordonate relative la fereastră
+        # Calculăm coordonate relative la fereastra reală capturată
         rel_x = round(max(0.0, min(1.0, (x1 - wl) / ww)), 3)
         rel_y = round(max(0.0, min(1.0, (y1 - wt) / wh)), 3)
+        rel_w = round(max(0.02, min(1.0, w / ww)), 3)
+        rel_h = round(max(0.02, min(1.0, h / wh)), 3)
 
         result_data = {
             "window_title": win_title,
+            "process_name": proc_name,
             "window_rect": win_rect,
             "abs_x": x1,
             "abs_y": y1,
             "width": w,
             "height": h,
             "rel_x": rel_x,
-            "rel_y": rel_y
+            "rel_y": rel_y,
+            "rel_w": rel_w,
+            "rel_h": rel_h
         }
 
         self._cleanup()
         self.on_picked(result_data)
+
+    def _find_real_window_under_point(self, pt: Tuple[int, int], exclude_hwnd: Optional[int]) -> Optional[int]:
+        """Găsește fereastra de aplicație reală aflată sub punctul de ecran, ignorând overlay-urile proprii."""
+        cur = win32gui.GetTopWindow(None)
+        exclude_titles = [
+            "FocusPilot_Picker", "FocusPilot_Overlay_HUD", "Program Manager",
+            "Windows Input Experience", "Default IME", "MSCTFIME UI"
+        ]
+        while cur:
+            if cur != exclude_hwnd and win32gui.IsWindowVisible(cur):
+                txt = win32gui.GetWindowText(cur)
+                if txt and not any(ign in txt for ign in exclude_titles):
+                    l, t, r, b = win32gui.GetWindowRect(cur)
+                    if l <= pt[0] <= r and t <= pt[1] <= b:
+                        return cur
+            cur = win32gui.GetWindow(cur, win32con.GW_HWNDNEXT)
+        return None
+
+    def _get_process_name_for_hwnd(self, hwnd: int) -> str:
+        """Obține numele executabilului asociat ferestrei date."""
+        try:
+            import win32process
+            import ctypes
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+            if h:
+                buf = ctypes.create_unicode_buffer(1024)
+                sz = ctypes.c_ulong(1024)
+                ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(sz))
+                ctypes.windll.kernel32.CloseHandle(h)
+                import os
+                return os.path.basename(buf.value).lower()
+        except Exception:
+            pass
+        return ""
 
     def cancel(self) -> None:
         self._cleanup()

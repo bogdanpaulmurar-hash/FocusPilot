@@ -93,8 +93,8 @@
       "enabled": true,
       "trigger": {
         "target_type": "browser_or_window",
-        "window_title_pattern": "*TIMA Web Gateway*",
-        "url_pattern": "*https://tima.siemens.com/otwg20/#/main",
+        "window_title_pattern": "*FocusPilot_Picker*",
+        "url_pattern": "*https://tima.siemens.com/otwg20/#/main\"",
         "process_name": "chrome.exe",
         "text_condition": "contains",
         "search_text": "Please change category",
@@ -119,10 +119,49 @@
       },
       "region": {
         "mode": "window_relative",
-        "rel_x": 0.1,
-        "rel_y": 0.72,
-        "width": 380,
-        "height": 55,
+        "rel_x": 0.286,
+        "rel_y": 0.725,
+        "width": 316,
+        "height": 44,
+        "monitor_index": -1
+      }
+    },
+    {
+      "id": "rule_059e8be7",
+      "name": "Regulă Nouă de Atenționare",
+      "enabled": true,
+      "trigger": {
+        "target_type": "browser_or_window",
+        "window_title_pattern": "*FocusPilot_Picker*",
+        "url_pattern": "*",
+        "process_name": "msedge.exe",
+        "text_condition": "contains",
+        "search_text": "Please change category",
+        "case_sensitive": false,
+        "is_regex": false
+      },
+      "visual_cue": {
+        "box_enabled": true,
+        "border_color": "#FF0000",
+        "border_width": 3,
+        "fill_color": "#FF3333",
+        "fill_opacity": 0.2,
+        "arrow_enabled": true,
+        "arrow_direction": "right",
+        "arrow_color": "#FF0000",
+        "arrow_size": 36,
+        "badge_enabled": true,
+        "badge_text": "⚠️ MODIFICĂ AICI!",
+        "badge_bg": "#D90429",
+        "badge_fg": "#FFFFFF",
+        "pulse_animation": true
+      },
+      "region": {
+        "mode": "window_relative",
+        "rel_x": 0.281,
+        "rel_y": 0.715,
+        "width": 344,
+        "height": 59,
         "monitor_index": -1
       }
     }

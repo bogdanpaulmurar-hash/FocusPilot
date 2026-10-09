@@ -193,25 +193,36 @@ class FocusPilotApp:
         return not new_state
 
     def _test_single_cue(self, rule: Dict[str, Any]) -> None:
-        """Testează reperul vizual desenându-l pe ecran timp de 5 secunde."""
-        logger.info(f"Testare vizuală manuală pentru regula: {rule.get('name')}")
-        # Calculăm o poziție de test centrată pe monitorul primar
-        sw = self.root.winfo_screenwidth() or 1920
-        sh = self.root.winfo_screenheight() or 1080
-        cx = (sw // 2) - 180
-        cy = (sh // 2) - 30
+        """Testează reperul vizual desenându-l pe ecran timp de 6 secunde exact unde a fost configurat."""
+        logger.info(f"Testare vizuală manuală pentru regula: '{rule.get('name')}'")
+        
+        region = rule.get("region", {})
+        abs_x = region.get("abs_x", 0)
+        abs_y = region.get("abs_y", 0)
+        w = int(region.get("width", 360))
+        h = int(region.get("height", 60))
+
+        # Dacă există coordonate absolute din selecție, desenăm exact acolo unde a selectat utilizatorul!
+        if abs_x > 0 and abs_y > 0:
+            target_geo = (abs_x, abs_y, w, h)
+        else:
+            sw = self.root.winfo_screenwidth() or 1920
+            sh = self.root.winfo_screenheight() or 1080
+            cx = (sw // 2) - (w // 2)
+            cy = (sh // 2) - (h // 2)
+            target_geo = (cx, cy, w, h)
 
         demo_cue = {
             "rule_id": rule.get("id", "demo"),
             "rule_name": rule.get("name", "Test Demo"),
-            "geometry": (cx, cy, 360, 60),
+            "geometry": target_geo,
             "visual_cue": rule.get("visual_cue", {}),
             "window_title": "Fereastră de Test"
         }
         self.overlay.update_cues([demo_cue])
 
-        # Auto-ascundere după 5 secunde dacă nu există potrivire reală de fundal
-        self.root.after(5000, lambda: self.overlay.update_cues([]))
+        # Auto-ascundere după 6 secunde dacă nu există potrivire reală de fundal
+        self.root.after(6000, lambda: self.overlay.update_cues([]))
         self.root.after(4000, lambda: self.overlay.update_cues([]))
 
     def _test_demo_cues_from_tray(self) -> None:
