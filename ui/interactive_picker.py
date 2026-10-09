@@ -157,6 +157,25 @@ class InteractivePicker:
         rel_w = round(max(0.02, min(1.0, w / ww)), 3)
         rel_h = round(max(0.02, min(1.0, h / wh)), 3)
 
+        self._cleanup()
+
+        # Salvăm un crop (snip) al zonei selectate pentru urmărire la scroll fără extensii
+        snip_rel_path = ""
+        try:
+            import pyautogui, time, os
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            snip_dir = os.path.join(base_dir, "assets", "rules")
+            os.makedirs(snip_dir, exist_ok=True)
+            snip_filename = f"snip_{int(time.time()*1000)}.png"
+            snip_full_path = os.path.join(snip_dir, snip_filename)
+            time.sleep(0.1) # Mică pauză ca să dispară complet overlay-ul
+            crop_img = pyautogui.screenshot(region=(x1, y1, w, h))
+            crop_img.save(snip_full_path)
+            snip_rel_path = os.path.join("assets", "rules", snip_filename)
+            logger.info(f"[PICKER] Snip salvat pentru urmărire vizuală: {snip_rel_path}")
+        except Exception as e:
+            logger.warning(f"[PICKER] Salvare snip eșuată: {e}")
+
         result_data = {
             "window_title": win_title,
             "process_name": proc_name,
@@ -168,10 +187,10 @@ class InteractivePicker:
             "rel_x": rel_x,
             "rel_y": rel_y,
             "rel_w": rel_w,
-            "rel_h": rel_h
+            "rel_h": rel_h,
+            "snip_path": snip_rel_path
         }
 
-        self._cleanup()
         self.on_picked(result_data)
 
     def _find_real_window_under_point(self, pt: Tuple[int, int], exclude_hwnd: Optional[int]) -> Optional[int]:

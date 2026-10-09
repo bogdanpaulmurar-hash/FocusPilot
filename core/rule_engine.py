@@ -148,6 +148,25 @@ class RuleEngine:
         win_w = max(100, right - left)
         win_h = max(100, bottom - top)
 
+        if mode == "visual_track":
+            template_rel = region.get("template_image", "")
+            if template_rel:
+                try:
+                    import os, pyautogui
+                    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    tmpl_path = os.path.join(base_dir, template_rel) if not os.path.isabs(template_rel) else template_rel
+                    if os.path.exists(tmpl_path):
+                        # Căutăm imaginea doar în aria ferestrei active
+                        search_region = (max(0, left), max(0, top), win_w, win_h)
+                        loc = pyautogui.locateOnScreen(tmpl_path, region=search_region)
+                        if loc:
+                            return (int(loc.left), int(loc.top), int(loc.width), int(loc.height))
+                        else:
+                            # Elementul nu e vizibil (a fost scrollat în afara ecranului)
+                            return None
+                except Exception:
+                    pass
+
         if mode == "entire_window":
             # Înfășoară întreaga fereastră cu o mică margine
             pad = 8

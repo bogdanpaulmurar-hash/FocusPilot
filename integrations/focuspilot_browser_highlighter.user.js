@@ -20,7 +20,7 @@
     "trigger": {
       "target_type": "browser_or_window",
       "window_title_pattern": "*TIMA Web Gateway - Google Chrome*",
-      "url_pattern": "*https://tima.siemens.com/otwg20/#/main\"",
+      "url_pattern": "*https://tima.siemens.com/otwg20/#/main*",
       "process_name": "browser",
       "text_condition": "contains",
       "search_text": "Please change category",
@@ -41,10 +41,12 @@
       "badge_text": "🚨 SCHIMBĂ CATEGORIA TIMA!",
       "badge_bg": "#D90429",
       "badge_fg": "#FFFFFF",
-      "pulse_animation": true
+      "pulse_animation": true,
+      "duration_sec": 0
     },
     "region": {
-      "mode": "window_relative",
+      "mode": "visual_track",
+      "template_image": "assets/rules/snip_tima.png",
       "rel_x": 0.285,
       "rel_y": 0.74,
       "width": 323,

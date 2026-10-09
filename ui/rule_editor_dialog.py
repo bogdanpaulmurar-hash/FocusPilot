@@ -283,8 +283,8 @@ class RuleEditorDialog:
         r_mode = tk.Frame(sec4, bg=self.theme["bg_card"])
         r_mode.pack(fill="x", pady=4)
         tk.Label(r_mode, text="Mod Poziționare:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left")
-        self.var_mode = tk.StringVar(value=self.rule.get("region", {}).get("mode", "window_relative"))
-        cb_mode = ttk.Combobox(r_mode, textvariable=self.var_mode, values=["window_relative", "entire_window", "screen_absolute"], state="readonly", width=18)
+        self.var_mode = tk.StringVar(value=self.rule.get("region", {}).get("mode", "visual_track"))
+        cb_mode = ttk.Combobox(r_mode, textvariable=self.var_mode, values=["visual_track", "window_relative", "entire_window", "screen_absolute"], state="readonly", width=20)
         cb_mode.pack(side="left", padx=8)
 
         btn_pick = tk.Button(
@@ -438,7 +438,11 @@ class RuleEditorDialog:
         self.rule["region"]["height"] = data.get("height", 60)
         self.rule["region"]["abs_x"] = data.get("abs_x", 0)
         self.rule["region"]["abs_y"] = data.get("abs_y", 0)
-        self.var_mode.set("window_relative")
+        if data.get("snip_path"):
+            self.rule["region"]["template_image"] = data["snip_path"]
+            self.var_mode.set("visual_track")
+        else:
+            self.var_mode.set("window_relative")
 
         messagebox.showinfo(
             "FocusPilot",
@@ -446,7 +450,7 @@ class RuleEditorDialog:
             f"• Fereastră: {data.get('window_title')}\n"
             f"• Aplicație: {data.get('process_name')}\n"
             f"• Dimensiune chenar: {data.get('width')} x {data.get('height')} px\n"
-            f"• Poziție relativă: {int(data.get('rel_x', 0)*100)}% orizontal, {int(data.get('rel_y', 0)*100)}% vertical",
+            f"• Urmărire dinamică (Scroll Tracking): ACTIVĂ",
             parent=self.dialog
         )
 

@@ -185,9 +185,12 @@ class MonitorEngine:
                             # Durata a expirat pentru această sesiune
                             continue
 
-                        matched_ids.append(rule_id)
                         cue_geo = RuleEngine.calculate_cue_geometry(rule, win_info, virt_bounds)
+                        if cue_geo is None:
+                            # Elementul nu se află în cadrul vizibil al ecranului (e.g. scrollat în afara paginii)
+                            continue
 
+                        matched_ids.append(rule_id)
                         cue_data = {
                             "rule_id": rule_id,
                             "rule_name": rule["name"],
@@ -201,13 +204,10 @@ class MonitorEngine:
                         if rule_id in self._rule_start_times:
                             del self._rule_start_times[rule_id]
 
-                # 3. Notifică doar dacă s-a schimbat lista de reguli potrivite
-                if matched_ids != self._last_active_rules_ids:
-                    if matched_ids:
-                        logger.info(f"[MONITOR] Reguli declanșate ({len(matched_ids)}): {matched_ids} pe fereastra '{win_info.get('title')}' [{win_info.get('process_name')}]")
-                    else:
-                        active_rule_names = [r.get('name') for r in rules if r.get('enabled', True)]
-                        logger.info(f"[MONITOR] Nicio regulă activă pe fereastra în prim-plan '{win_info.get('title')}' [{win_info.get('process_name')}]. Reguli evaluate: {active_rule_names}. Ascund repere.")
+                # 3. Notifică dacă s-au schimbat regulile sau coordonatele (la scroll în pagină!)
+                cues_signature = str([(c["rule_id"], c["geometry"]) for c in matched_cues])
+                if cues_signature != getattr(self, "_last_cues_sig", ""):
+                    self._last_cues_sig = cues_signature
                     self._last_active_rules_ids = matched_ids
                     if self.on_cues_changed:
                         self.on_cues_changed(matched_cues)
