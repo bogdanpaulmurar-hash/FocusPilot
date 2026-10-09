@@ -127,9 +127,14 @@ class RuleEngine:
                 if words and all(w in c_haystack for w in words):
                     matched = True
 
-        # Dacă fereastra/aplicația este confirmată (ex: TIMA pe ecran), activăm reperul vizual
-        # asociat câmpului indicat de utilizator chiar dacă textul din DOM nu e în titlul ferestrei
-        if not matched and has_win_match:
+        # Dacă modul este visual_track sau există template_image, verificăm dacă elementul există vizual pe ecran
+        region = rule.get("region", {})
+        if region.get("mode") == "visual_track" or region.get("template_image"):
+            # Pentru visual_track, regula se consideră potrivită doar dacă fereastra/procesul corespunde;
+            # confirmarea finală se dă în calculate_cue_geometry prin prezența vizuală reală a elementului!
+            if has_win_match:
+                matched = True
+        elif not matched and has_win_match and not search_text:
             matched = True
 
         return matched

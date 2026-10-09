@@ -143,9 +143,10 @@ class MonitorEngine:
         """Bucla principală de scanare periodică."""
         while self._running:
             try:
-                poll_interval = float(self.config_manager.get_setting("poll_interval_sec", 1.0))
-                if poll_interval < 0.2:
-                    poll_interval = 0.2
+                # Interval rapid de răspuns pentru dispariție instantanee la schimbarea ferestrei (100ms)
+                poll_interval = float(self.config_manager.get_setting("poll_interval_sec", 0.15))
+                if poll_interval < 0.1:
+                    poll_interval = 0.1
 
                 if self._paused or not self.config_manager.get_setting("global_enabled", True):
                     time.sleep(poll_interval)
@@ -154,7 +155,7 @@ class MonitorEngine:
                 # 1. Extrage fereastra activă curentă
                 win_info = get_foreground_window_info()
                 if not win_info:
-                    if self._last_active_rules_ids:
+                    if self._last_active_rules_ids or getattr(self, "_last_cues_sig", ""):
                         self._clear_cues()
                     self._rule_start_times.clear()
                     time.sleep(poll_interval)
