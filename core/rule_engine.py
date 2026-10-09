@@ -127,15 +127,17 @@ class RuleEngine:
                 if words and all(w in c_haystack for w in words):
                     matched = True
 
-        # Dacă modul este visual_track sau există template_image, verificăm dacă elementul există vizual pe ecran
         region = rule.get("region", {})
-        if region.get("mode") == "visual_track" or region.get("template_image"):
-            # Pentru visual_track, regula se consideră potrivită doar dacă fereastra/procesul corespunde;
-            # confirmarea finală se dă în calculate_cue_geometry prin prezența vizuală reală a elementului!
-            if has_win_match:
-                matched = True
-        elif not matched and has_win_match and not search_text:
-            matched = True
+        # Pentru modul visual_track, dacă fereastra se potrivește, lăsăm calculate_cue_geometry
+        # să confirme existența fizică a elementului vizual pe ecran (dacă nu e pe ecran, returnează None)
+        if region.get("mode") == "visual_track":
+            tmpl = region.get("template_image", "").strip()
+            if has_win_match and tmpl:
+                import os
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                tmpl_p = os.path.join(base_dir, tmpl) if not os.path.isabs(tmpl) else tmpl
+                if os.path.exists(tmpl_p):
+                    matched = True
 
         return matched
 
@@ -154,25 +156,36 @@ class RuleEngine:
         win_h = max(100, bottom - top)
 
         if mode == "visual_track":
-            template_rel = region.get("template_image", "")
-            if template_rel:
-                try:
-                    import os, pyautogui
-                    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                    tmpl_path = os.path.join(base_dir, template_rel) if not os.path.isabs(template_rel) else template_rel
-                    if os.path.exists(tmpl_path):
-                        # Căutăm imaginea doar în aria ferestrei active
-                        search_region = (max(0, left), max(0, top), win_w, win_h)
-                        loc = pyautogui.locateOnScreen(tmpl_path, region=search_region)
-                        if loc:
-                            return (int(loc.left), int(loc.top), int(loc.width), int(loc.height))
-                        else:
-                            # Elementul nu e vizibil (a fost scrollat în afara ecranului)
-                            return None
-                except Exception:
-                    pass
+            template_rel = region.get("template_image", "").strip()
+            if not template_rel:
+                return None
+            try:
+                import os, pyautogui
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                tmpl_path = os.path.join(base_dir, template_rel) if not os.path.isabs(template_rel) else template_rel
+                if not os.path.exists(tmpl_path):
+                    return None
 
-        if mode == "entire_window":
+                # Suport multi-monitor (3 monitoare): intersectăm fereastra cu ecranul virtual complet
+                vx, vy, vw, vh = virtual_screen
+                sx = max(vx, left)
+                sy = max(vy, top)
+                sw = max(10, min(win_w, (vx + vw) - sx))
+                sh = max(10, min(win_h, (vy + vh) - sy))
+                search_region = (int(sx), int(sy), int(sw), int(sh))
+
+                loc = pyautogui.locateOnScreen(tmpl_path, region=search_region, grayscale=True)
+                if loc:
+                    return (int(loc.left), int(loc.top), int(loc.width), int(loc.height))
+                return None
+            except pyautogui.ImageNotFoundException:
+                # Elementul NU se află pe ecran -> strict invizibil!
+                return None
+            except Exception as e:
+                # Orice eroare în căutare -> nu afișăm nimic
+                return None
+
+        elif mode == "entire_window":
             # Înfășoară întreaga fereastră cu o mică margine
             pad = 8
             return (left + pad, top + pad, win_w - (pad * 2), win_h - (pad * 2))

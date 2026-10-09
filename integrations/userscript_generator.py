@@ -8,7 +8,7 @@ marcând cu roșu, adăugând săgeți animate și stilizând câmpurile identif
 import os
 import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from core.config_manager import ConfigManager
 
@@ -57,8 +57,8 @@ def generate_userscript(config_manager: ConfigManager, output_path: Optional[str
             const badgeEnabled = cue.badge_enabled !== false;
             const badgeText = cue.badge_text || '⚠️ MODIFICĂ AICI!';
 
-            // Căutare elemente care conțin textul
-            const xpath = `//*[contains(text(), '${{searchText}}')] | //input[contains(@value, '${{searchText}}')] | //textarea[contains(text(), '${{searchText}}')]`;
+            // Căutare elemente care conțin textul (suport text adânc, noduri imbricate și atribute title)
+            const xpath = `//*[contains(., '${{searchText}}')] | //*[contains(@title, '${{searchText}}')] | //input[contains(@value, '${{searchText}}')] | //textarea[contains(., '${{searchText}}')]`;
             const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 
             for (let i = 0; i < result.snapshotLength; i++) {{

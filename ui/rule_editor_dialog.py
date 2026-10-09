@@ -294,6 +294,14 @@ class RuleEditorDialog:
         )
         btn_pick.pack(side="right")
 
+        # Rând status snip / șablon vizual
+        r_snip = tk.Frame(sec4, bg=self.theme["bg_card"])
+        r_snip.pack(fill="x", pady=(4, 2))
+        tmpl_cur = self.rule.get("region", {}).get("template_image", "")
+        snip_txt = f"📸 Șablon Urmărire Vizuală: {tmpl_cur}" if tmpl_cur else "📸 Niciun șablon vizual definit (folosiți 'Alege Interactiv' pentru a selecta elementul/biletul de pe ecran)"
+        self.lbl_snip = tk.Label(r_snip, text=snip_txt, font=FONT_SMALL, bg=self.theme["bg_card"], fg=self.theme["accent"] if tmpl_cur else self.theme["fg_secondary"], anchor="w")
+        self.lbl_snip.pack(side="left", fill="x", expand=True)
+
         # ── Secțiunea 5: Live Preview ──
         sec5 = self._create_card(scroll_frame, "5. Previzualizare Reper Vizual (Live Preview)")
         self.preview_canvas = tk.Canvas(sec5, height=130, bg="#11161B", highlightthickness=1, highlightbackground=self.theme["border"])
@@ -441,8 +449,12 @@ class RuleEditorDialog:
         if data.get("snip_path"):
             self.rule["region"]["template_image"] = data["snip_path"]
             self.var_mode.set("visual_track")
+            if hasattr(self, "lbl_snip"):
+                self.lbl_snip.configure(text=f"📸 Șablon Urmărire Vizuală: {data['snip_path']}", fg=self.theme["accent"])
         else:
             self.var_mode.set("window_relative")
+            if hasattr(self, "lbl_snip"):
+                self.lbl_snip.configure(text="📸 Niciun șablon vizual (mod poziție relativă)", fg=self.theme["fg_secondary"])
 
         messagebox.showinfo(
             "FocusPilot",

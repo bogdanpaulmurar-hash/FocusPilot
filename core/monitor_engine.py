@@ -136,6 +136,7 @@ class MonitorEngine:
 
     def _clear_cues(self) -> None:
         self._last_active_rules_ids = []
+        self._last_cues_sig = ""
         if self.on_cues_changed:
             self.on_cues_changed([])
 

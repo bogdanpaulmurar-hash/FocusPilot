@@ -159,7 +159,7 @@ class InteractivePicker:
 
         self._cleanup()
 
-        # Salvăm un crop (snip) al zonei selectate pentru urmărire la scroll fără extensii
+        # Salvăm un crop (snip) curat al zonei selectate pentru urmărire la scroll
         snip_rel_path = ""
         try:
             import pyautogui, time, os
@@ -168,10 +168,11 @@ class InteractivePicker:
             os.makedirs(snip_dir, exist_ok=True)
             snip_filename = f"snip_{int(time.time()*1000)}.png"
             snip_full_path = os.path.join(snip_dir, snip_filename)
-            time.sleep(0.1) # Mică pauză ca să dispară complet overlay-ul
+            # Pauză esențială pentru ca Windows DWM compositor să șteargă orice urmă vizuală a picker-ului
+            time.sleep(0.18)
             crop_img = pyautogui.screenshot(region=(x1, y1, w, h))
             crop_img.save(snip_full_path)
-            snip_rel_path = os.path.join("assets", "rules", snip_filename)
+            snip_rel_path = os.path.join("assets", "rules", snip_filename).replace("\\", "/")
             logger.info(f"[PICKER] Snip salvat pentru urmărire vizuală: {snip_rel_path}")
         except Exception as e:
             logger.warning(f"[PICKER] Salvare snip eșuată: {e}")
@@ -239,6 +240,15 @@ class InteractivePicker:
                 self.overlay.unbind_all("<Escape>")
             except Exception:
                 pass
-            self.overlay.destroy()
+            try:
+                self.overlay.destroy()
+            except Exception:
+                pass
             self.overlay = None
             self.canvas = None
+            try:
+                if self.parent:
+                    self.parent.update_idletasks()
+                    self.parent.update()
+            except Exception:
+                pass

@@ -120,7 +120,7 @@
       },
       "region": {
         "mode": "visual_track",
-        "template_image": "assets/rules/snip_tima.png",
+        "template_image": "",
         "rel_x": 0.285,
         "rel_y": 0.74,
         "width": 323,
