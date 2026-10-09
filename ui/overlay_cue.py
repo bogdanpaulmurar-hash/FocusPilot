@@ -119,11 +119,12 @@ class MultiScreenOverlay:
                 self._is_visible = False
             return
 
-        if not self._is_visible:
-            self.root.deiconify()
-            self.root.attributes("-topmost", True)
-            self._apply_click_through()
-            self._is_visible = True
+        # Asigurăm afișarea și ordinea de sus (TopMost)
+        self.root.deiconify()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self._apply_click_through()
+        self._is_visible = True
 
         for cue in cues:
             self._draw_single_cue(cue)

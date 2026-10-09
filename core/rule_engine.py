@@ -76,10 +76,14 @@ class RuleEngine:
             if not cls.match_string(norm_pattern, win_title, case_sensitive=False):
                 return False
 
-        # 3. Filtru Text / Condiție Stil Excel
+        # 3. Filtru Declanșator Text / Condiție Stil Excel
         search_text = trigger.get("search_text", "").strip()
         if not search_text:
             return True
+
+        # Dacă titlul ferestrei sau procesul se potrivește deja cu ținta (ex: TIMA în browser),
+        # regula este considerată activă pentru respectiva aplicație/pagină
+        has_win_match = bool(title_pattern and title_pattern != "*" and cls.match_string(norm_pattern, win_title, case_sensitive=False))
 
         text_condition = trigger.get("text_condition", "contains")
         case_sensitive = trigger.get("case_sensitive", False)
@@ -122,6 +126,11 @@ class RuleEngine:
                 words = [w for w in c_search.split() if len(w) > 2]
                 if words and all(w in c_haystack for w in words):
                     matched = True
+
+        # Dacă fereastra/aplicația este confirmată (ex: TIMA pe ecran), activăm reperul vizual
+        # asociat câmpului indicat de utilizator chiar dacă textul din DOM nu e în titlul ferestrei
+        if not matched and has_win_match:
+            matched = True
 
         return matched
 

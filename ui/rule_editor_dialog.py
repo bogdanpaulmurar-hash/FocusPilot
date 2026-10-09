@@ -313,7 +313,14 @@ class RuleEditorDialog:
             self._update_preview()
 
     def _start_picker(self) -> None:
-        # Ascundem atât dialogul de editare cât și fereastra părinte Dashboard
+        # Eliberăm grab-ul modal de pe dialog înainte de a ascunde ferestrele,
+        # altfel Tkinter blochează toate click-urile și tastele trimise către fereastra de selecție!
+        try:
+            self.dialog.grab_release()
+        except Exception:
+            pass
+
+        # Ascundem dialogul de editare și Dashboard-ul
         self.dialog.withdraw()
         try:
             self.parent.withdraw()
@@ -332,6 +339,10 @@ class RuleEditorDialog:
         self.dialog.deiconify()
         self.dialog.lift()
         self.dialog.focus_force()
+        try:
+            self.dialog.grab_set()
+        except Exception:
+            pass
 
     def _on_picked(self, data: Dict[str, Any]) -> None:
         try:
@@ -341,6 +352,10 @@ class RuleEditorDialog:
         self.dialog.deiconify()
         self.dialog.lift()
         self.dialog.focus_force()
+        try:
+            self.dialog.grab_set()
+        except Exception:
+            pass
         # Populăm automat câmpurile pe baza selecției utilizatorului
         if data.get("window_title"):
             self.ent_win_title.delete(0, tk.END)

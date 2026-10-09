@@ -83,11 +83,21 @@ class InteractivePicker:
         self.canvas.bind("<B1-Motion>", self._on_mouse_move)
         self.canvas.bind("<ButtonRelease-1>", self._on_button_up)
 
+        self.overlay.bind("<ButtonPress-1>", self._on_button_down)
+        self.overlay.bind("<B1-Motion>", self._on_mouse_move)
+        self.overlay.bind("<ButtonRelease-1>", self._on_button_up)
+
         # Asigurăm prinderea tastelor Escape și tastelor generale
         self.overlay.bind_all("<Escape>", lambda e: self.cancel())
         self.overlay.bind("<Escape>", lambda e: self.cancel())
         self.canvas.bind("<Escape>", lambda e: self.cancel())
 
+        # Grab pe picker pentru a garanta că primește toate evenimentele de mouse
+        self.overlay.update()
+        try:
+            self.overlay.grab_set()
+        except Exception:
+            pass
         self.overlay.focus_force()
 
     def _on_button_down(self, event) -> None:

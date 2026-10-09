@@ -19,36 +19,36 @@
     "enabled": true,
     "trigger": {
       "target_type": "browser_or_window",
-      "window_title_pattern": "Change TIMA Ticket catgegory",
-      "url_pattern": "*",
-      "process_name": "msedge.exe",
+      "window_title_pattern": "*TIMA Web Gateway*",
+      "url_pattern": "*https://tima.siemens.com/otwg20/#/main",
+      "process_name": "chrome.exe",
       "text_condition": "contains",
-      "search_text": "🚨[GSP NEW Ticket] ⚠️ Please change category ‼️",
+      "search_text": "Please change category",
       "case_sensitive": false,
       "is_regex": false
     },
     "visual_cue": {
       "box_enabled": true,
       "border_color": "#FF0000",
-      "border_width": 3,
+      "border_width": 4,
       "fill_color": "#FF3333",
       "fill_opacity": 0.2,
       "arrow_enabled": true,
-      "arrow_direction": "right",
+      "arrow_direction": "up",
       "arrow_color": "#FF0000",
       "arrow_size": 36,
       "badge_enabled": true,
-      "badge_text": "⚠️ MODIFICĂ AICI!",
+      "badge_text": "🚨 SCHIMBĂ CATEGORIA TIMA!",
       "badge_bg": "#D90429",
       "badge_fg": "#FFFFFF",
       "pulse_animation": true
     },
     "region": {
       "mode": "window_relative",
-      "rel_x": 0.2,
-      "rel_y": 0.3,
-      "width": 350,
-      "height": 60,
+      "rel_x": 0.1,
+      "rel_y": 0.72,
+      "width": 380,
+      "height": 55,
       "monitor_index": -1
     }
   }
