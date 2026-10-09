@@ -34,7 +34,7 @@
       "fill_color": "#FF3333",
       "fill_opacity": 0.2,
       "arrow_enabled": true,
-      "arrow_direction": "left",
+      "arrow_direction": "down",
       "arrow_color": "#00ff00",
       "arrow_size": 36,
       "badge_enabled": true,
@@ -46,14 +46,14 @@
     },
     "region": {
       "mode": "visual_track",
-      "template_image": "assets/rules/snip_tima.png",
-      "rel_x": 0.285,
-      "rel_y": 0.74,
-      "width": 323,
-      "height": 76,
+      "template_image": "assets/rules/snip_1791558042323.png",
+      "rel_x": 0.284,
+      "rel_y": 0.737,
+      "width": 329,
+      "height": 82,
       "monitor_index": -1,
-      "abs_x": 544,
-      "abs_y": 767
+      "abs_x": 541,
+      "abs_y": 764
     }
   }
 ];
@@ -73,8 +73,8 @@
             const badgeEnabled = cue.badge_enabled !== false;
             const badgeText = cue.badge_text || '⚠️ MODIFICĂ AICI!';
 
-            // Căutare elemente care conțin textul
-            const xpath = `//*[contains(text(), '${searchText}')] | //input[contains(@value, '${searchText}')] | //textarea[contains(text(), '${searchText}')]`;
+            // Căutare elemente care conțin textul (suport text adânc, noduri imbricate și atribute title)
+            const xpath = `//*[contains(., '${searchText}')] | //*[contains(@title, '${searchText}')] | //input[contains(@value, '${searchText}')] | //textarea[contains(., '${searchText}')]`;
             const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 
             for (let i = 0; i < result.snapshotLength; i++) {

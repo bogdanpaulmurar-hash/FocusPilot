@@ -12,12 +12,58 @@ from typing import Dict, Any, List, Optional, Tuple
 class RuleEngine:
     """Motor de evaluare a condițiilor definite de utilizator stil Microsoft Excel."""
 
-    @staticmethod
-    def match_string(pattern: str, text: str, is_regex: bool = False, case_sensitive: bool = False) -> bool:
+    _uia_cache: Dict[Tuple[int, str], Any] = {}
+
+    @classmethod
+    def find_uia_control_geometry(cls, hwnd: int, search_text: str) -> Optional[Tuple[int, int, int, int]]:
+        """Caută un control cu textul specificat prin UI Automation în fereastra dată."""
+        if not hwnd or not search_text:
+            return None
+        cache_key = (hwnd, search_text)
+        if cache_key in cls._uia_cache:
+            ctrl = cls._uia_cache[cache_key]
+            try:
+                r = ctrl.BoundingRectangle
+                if r.width() > 0 and r.height() > 0:
+                    pad_x = 6
+                    pad_y = 4
+                    return (r.left - pad_x, r.top - pad_y, r.width() + (pad_x * 2), r.height() + (pad_y * 2))
+            except Exception:
+                cls._uia_cache.pop(cache_key, None)
+
+        try:
+            import uiautomation as auto
+            win = auto.ControlFromHandle(hwnd)
+            if not win:
+                return None
+            target = win.TextControl(SubName=search_text)
+            if not target.Exists(0.12):
+                target = win.Control(SubName=search_text)
+            if target.Exists(0.12):
+                cls._uia_cache[cache_key] = target
+                r = target.BoundingRectangle
+                if r.width() > 0 and r.height() > 0:
+                    pad_x = 6
+                    pad_y = 4
+                    return (r.left - pad_x, r.top - pad_y, r.width() + (pad_x * 2), r.height() + (pad_y * 2))
+            cls._uia_cache.pop(cache_key, None)
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def match_string(cls, pattern: str, text: str, is_regex: bool = False, case_sensitive: bool = False) -> bool:
         """Verifică dacă textul se potrivește cu un șablon (wildcard sau regex)."""
         if not pattern or pattern == "*":
             return True
         if not text:
+            return False
+
+        if not is_regex and ("|" in pattern or ";" in pattern):
+            subpatterns = [p.strip() for p in re.split(r"[|;]", pattern) if p.strip()]
+            for sp in subpatterns:
+                if cls.match_string(sp, text, is_regex=False, case_sensitive=case_sensitive):
+                    return True
             return False
 
         if not case_sensitive:
@@ -127,10 +173,17 @@ class RuleEngine:
                 if words and all(w in c_haystack for w in words):
                     matched = True
 
+        # Dacă fereastra se potrivește (ex: Chrome/Edge cu TIMA):
+        # A. Verificăm dacă textul specificat se află pe ecran via Windows UI Automation
+        hwnd = window_info.get("hwnd")
+        if not matched and has_win_match and hwnd and search_text:
+            uia_geo = cls.find_uia_control_geometry(hwnd, search_text)
+            if uia_geo:
+                matched = True
+
         region = rule.get("region", {})
-        # Pentru modul visual_track, dacă fereastra se potrivește, lăsăm calculate_cue_geometry
-        # să confirme existența fizică a elementului vizual pe ecran (dacă nu e pe ecran, returnează None)
-        if region.get("mode") == "visual_track":
+        # B. Pentru modul visual_track, dacă există template_image valid pe disc
+        if not matched and region.get("mode") == "visual_track":
             tmpl = region.get("template_image", "").strip()
             if has_win_match and tmpl:
                 import os
@@ -142,7 +195,7 @@ class RuleEngine:
         return matched
 
     @classmethod
-    def calculate_cue_geometry(cls, rule: Dict[str, Any], window_info: Dict[str, Any], virtual_screen: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
+    def calculate_cue_geometry(cls, rule: Dict[str, Any], window_info: Dict[str, Any], virtual_screen: Tuple[int, int, int, int]) -> Optional[Tuple[int, int, int, int]]:
         """
         Calculează coordonatele dreptunghiului țintă pe ecranul virtual (X, Y, W, H).
         Suportă cele 3 monitoare în coordonate Windows absolute.
@@ -155,6 +208,16 @@ class RuleEngine:
         win_w = max(100, right - left)
         win_h = max(100, bottom - top)
 
+        hwnd = window_info.get("hwnd")
+        search_text = rule.get("trigger", {}).get("search_text", "").strip()
+
+        # 1. Prioritate Maximă: Identificare precisă a elementului din pagină/aplicație prin Windows UI Automation
+        if search_text and hwnd:
+            uia_geo = cls.find_uia_control_geometry(hwnd, search_text)
+            if uia_geo:
+                return uia_geo
+
+        # 2. Prioritate 2: Urmărire vizuală prin potrivire de șablon (OpenCV Template Matching)
         if mode == "visual_track":
             template_rel = region.get("template_image", "").strip()
             if not template_rel:
@@ -174,7 +237,7 @@ class RuleEngine:
                 sh = max(10, min(win_h, (vy + vh) - sy))
                 search_region = (int(sx), int(sy), int(sw), int(sh))
 
-                loc = pyautogui.locateOnScreen(tmpl_path, region=search_region, grayscale=True)
+                loc = pyautogui.locateOnScreen(tmpl_path, region=search_region, confidence=0.8, grayscale=True)
                 if loc:
                     return (int(loc.left), int(loc.top), int(loc.width), int(loc.height))
                 return None

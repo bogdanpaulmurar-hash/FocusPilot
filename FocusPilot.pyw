@@ -207,17 +207,53 @@ class FocusPilotApp:
             w = int(region.get("width", 360))
             h = int(region.get("height", 60))
 
-            logger.info(f"[TEST] Parametri regiune: abs=({abs_x}, {abs_y}), size=({w}x{h}), mode={region.get('mode')}")
+            target_geo = None
 
-            # Dacă există coordonate absolute din selecție, desenăm exact acolo unde a selectat utilizatorul!
-            if abs_x > 0 and abs_y > 0:
-                target_geo = (abs_x, abs_y, w, h)
-            else:
-                sw = self.root.winfo_screenwidth() or 1920
-                sh = self.root.winfo_screenheight() or 1080
-                cx = (sw // 2) - (w // 2)
-                cy = (sh // 2) - (h // 2)
-                target_geo = (cx, cy, w, h)
+            # 1. Încercăm să găsim poziția reală a elementului dacă fereastra țintă este deschisă
+            from core.monitor_engine import get_foreground_window_info, get_virtual_screen_bounds
+            import win32gui
+            virt_bounds = get_virtual_screen_bounds()
+            win_info = get_foreground_window_info()
+
+            if win_info and RuleEngine.evaluate_rule(rule, win_info):
+                cue_geo = RuleEngine.calculate_cue_geometry(rule, win_info, virt_bounds)
+                if cue_geo:
+                    target_geo = cue_geo
+                    logger.info(f"[TEST] Element detectat în timp real pe fereastra activă: {target_geo}")
+
+            if not target_geo:
+                # Căutăm printre ferestrele vizibile din sistem care corespund regulii
+                title_pat = rule.get("trigger", {}).get("window_title_pattern", "*")
+                def _scan_win(hnd, extra):
+                    nonlocal target_geo
+                    if target_geo:
+                        return
+                    if win32gui.IsWindowVisible(hnd):
+                        t = win32gui.GetWindowText(hnd)
+                        if t and RuleEngine.match_string(title_pat, t):
+                            rect = win32gui.GetWindowRect(hnd)
+                            w_info = {"hwnd": hnd, "title": t, "process_name": "browser", "rect": rect, "extra_text": ""}
+                            geo = RuleEngine.calculate_cue_geometry(rule, w_info, virt_bounds)
+                            if geo:
+                                target_geo = geo
+                                logger.info(f"[TEST] Element detectat în fereastră de fundal: {target_geo}")
+                try:
+                    win32gui.EnumWindows(_scan_win, None)
+                except Exception:
+                    pass
+
+            if not target_geo:
+                # Dacă elementul nu a fost găsit activ pe ecran, folosim coordonatele configurate sau centrul ecranului
+                if abs_x > 0 and abs_y > 0:
+                    target_geo = (abs_x, abs_y, w, h)
+                    logger.info(f"[TEST] Elementul nu este vizibil pe ecran; afișare la coordonatele salvate: {target_geo}")
+                else:
+                    sw = self.root.winfo_screenwidth() or 1920
+                    sh = self.root.winfo_screenheight() or 1080
+                    cx = (sw // 2) - (w // 2)
+                    cy = (sh // 2) - (h // 2)
+                    target_geo = (cx, cy, w, h)
+                    logger.info(f"[TEST] Afișare test centrat pe ecran: {target_geo}")
 
             logger.info(f"[TEST] Coordonate finale trimise la overlay: {target_geo}")
 

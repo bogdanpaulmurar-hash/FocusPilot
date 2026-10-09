@@ -4,7 +4,7 @@
     "start_with_windows": true,
     "hide_on_start": true,
     "keep_awake": true,
-    "poll_interval_sec": 1.0,
+    "poll_interval_sec": 0.6,
     "sound_alert": false,
     "global_enabled": true
   },
@@ -93,7 +93,7 @@
       "enabled": true,
       "trigger": {
         "target_type": "browser_or_window",
-        "window_title_pattern": "*TIMA Web Gateway - Google Chrome*",
+        "window_title_pattern": "*TIMA*|*Service Platform Industry*",
         "url_pattern": "*https://tima.siemens.com/otwg20/#/main*",
         "process_name": "browser",
         "text_condition": "contains",
@@ -108,7 +108,7 @@
         "fill_color": "#FF3333",
         "fill_opacity": 0.2,
         "arrow_enabled": true,
-        "arrow_direction": "left",
+        "arrow_direction": "down",
         "arrow_color": "#00ff00",
         "arrow_size": 36,
         "badge_enabled": true,
@@ -121,13 +121,13 @@
       "region": {
         "mode": "visual_track",
         "template_image": "",
-        "rel_x": 0.285,
-        "rel_y": 0.74,
-        "width": 323,
-        "height": 76,
+        "rel_x": 0.284,
+        "rel_y": 0.737,
+        "width": 310,
+        "height": 30,
         "monitor_index": -1,
-        "abs_x": 544,
-        "abs_y": 767
+        "abs_x": 554,
+        "abs_y": 751
       }
     }
   ]
