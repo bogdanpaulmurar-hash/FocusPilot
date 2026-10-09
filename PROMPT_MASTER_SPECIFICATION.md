@@ -155,45 +155,34 @@ Fiecare regulă de formatare condițională este stocată în `config.json` conf
 
 ---
 
-## 6. ANALIZĂ TEHNICĂ: DE CE METODA CLASICĂ OVERLAY TKINTER A EȘUAT ȘI SOLUȚIA SILKTEST-LIKE (UPDATE v2.0)
+## 6. ARHITECTURA VIZUALĂ SOLID FRAME BORDER ȘI SINCRONIZAREA LA SCROLL (UPDATE v2.1)
 
-### 6.1. De ce a eșuat Overlay-ul Tkinter `-transparentcolor`:
-1. **Compositing Hardware Chrome/Edge (DirectX/DWM):**
-   Browserele moderne folosesc accelerare GPU cu suprafețe DirectX swapchain. O fereastră Tkinter `WS_EX_LAYERED` cu transparență cromatică (`-transparentcolor`) este deseori ignorată de DWM sau acoperită de swapchain-ul GPU al browserului.
-2. **Absența Mapării Reale de Controale (Lipsa arborelui de obiecte):**
-   Spre deosebire de unelte profesionale de testare precum **SilkTest, TestComplete sau Playwright Inspect**, capturarea doar prin coordonate relative de fereastră e vulnerabilă la scroll, zoom, tab-uri deschise și redimensionare.
+### 6.1. Sistemul Solid Frame Border (4 Bare Opace TopMost):
+* **Fără SilkTest:** Instrumentul SilkTest a fost doar un exemplu de referință conceptuală. FocusPilot folosește propriul sistem nativ Python numit **Solid Frame Border Overlay**.
+* **Cum funcționează:** Se generează 4 ferestre independente `tk.Toplevel` opace de culoare solidă roșie (`#FF0000`) cu grosime configurabilă (3-6px), plus o fereastră dedicată pentru Săgeata triunghiulară și o fereastră pentru Badge-ul de text.
+* **Avantaj:** 100% vizibilitate peste suprafețele DirectX/GPU din Google Chrome și Microsoft Edge, fără probleme de transparență DWM, păstrând în același timp stilul click-through (`WS_EX_TRANSPARENT`).
 
 ---
 
-### 6.2. Arhitectura SilkTest-Like Propusă (Plan de Implementare):
+### 6.2. Sincronizarea cu Scroll-ul în Paginile Web (Problema & Soluția):
+* **Problema Scroll-ului Desktop:** Un overlay desktop plasează barele roșii la coordonate fixe pe ecran față de fereastra Chrome. Când utilizatorul derulează (scroll) pagina web în jos sau în sus, textul din pagină se mișcă, dar chenarul desktop rămâne la poziția inițială a ferestrei.
+* **Soluția Nativă Web (Userscript / DOM Injection):**
+  Pentru pagini web scrollabile (cum este TIMA Web Gateway), FocusPilot include generatorul de Userscript din `integrations/focuspilot_browser_highlighter.user.js`:
+  1. Scriptul se instalează cu 1 clic în browser prin extensia **Tampermonkey** sau **Violentmonkey**.
+  2. Scriptul găsește automat elementul HTML după text (`XPath / querySelector`) și îi aplică stilul `outline: 4px solid #FF0000 !important;` direct pe nodul DOM.
+  3. **Rezultat la Scroll:** Chenarul roșu este atașat fizic de elementul HTML — când dai scroll în pagină, chenarul se deplasează perfect sincronizat odată cu textul!
 
-#### Pilonul 1: Inspecție și Formatare Nativă DOM în Browser (DevTools / CDP / Userscript)
-* **Cum funcționează SilkTest în Web:** SilkTest injectează un agent sau comunică prin DevTools Protocol (CDP) direct cu pagina web.
-* **Formatare directă în DOM:** În loc să desenăm o fereastră deasupra browserului, injectăm stilul direct pe elementul HTML:
-  ```javascript
-  // SilkTest-like element highlighter
-  element.style.setProperty('outline', '4px solid #FF0000', 'important');
-  element.style.setProperty('box-shadow', '0 0 12px rgba(255,0,0,0.8)', 'important');
-  ```
-* **Selectare Interactivă ca în F12 DevTools:**
-  La activarea selecției, utilizatorul trece mouse-ul peste elementele paginii, elementele se aprind cu contur albastru/roșu (hover inspector), iar la clic se capturează:
-  - Selectorul CSS (`#categoryId`, `input[name="category"]`, `div.gsp-ticket-header`)
-  - XPath-ul exact
-  - Textul interior (`innerText`)
-  - Poziția `getBoundingClientRect()`
+---
 
-#### Pilonul 2: SilkTest-Like Desktop Control Inspector (Windows UI Automation / UIA)
-* Pentru aplicațiile desktop native (non-browser), se folosește arborele Windows UI Automation (`UIAutomationCore.dll`):
-  - Fiecare buton, câmp text, listă este un `AutomationElement`.
-  - Proprietăți extrase: `AutomationId`, `Name`, `ClassName`, `ControlType`, `BoundingRectangle`.
-* **Evidențiere Vizuală prin 4 Bare Solid-Color (Frame Border):**
-  În loc de o fereastră gigant transparentă pe 3 ecrane care se pierde în DWM, se creează **4 mici ferestre TopMost opace de 3px grosime** (Sus, Jos, Stânga, Dreapta) care încadrează fizic dreptunghiul elementului. Această metodă nu folosește transparență și este 100% garantată vizual peste orice aplicație cu accelerare hardware.
+### 6.3. Durata de Afișare Configurabilă (`duration_sec`):
+* Fiecare regulă permite setarea opțională a duratei de afișare:
+  - `0` sau lăsat gol: Reperul rămâne afișat **permanent** cât timp fereastra țintă este deschisă și activă.
+  - Valoare numerică (ex: `5` secunde): Reperul vizual atrage atenția timp de 5 secunde de la deschiderea/activarea ferestrei, după care se retrage automat pentru a nu deranja lucrul utilizatorului. La revenirea pe acea fereastră, timerul pornește din nou.
 
 ---
 
 ## 7. FOAIE DE PARCURS PENTRU CONTINUARE (ROADMAP PENTRU URMATORUL MODEL AI)
 
-Când se reia dezvoltarea cu buget reîncărcat sau alt model AI:
-1. **Pasul 1:** Implementarea modului `4-Bar Frame Border` în `ui/overlay_cue.py` — înlocuirea canvasului transparent cu 4 bare subțiri de culoare solidă roșie care îmbracă zona selectată fără erori de transparență.
-2. **Pasul 2:** Implementarea modulului `integrations/browser_inspector.py` bazat pe Playwright / CDP pentru a deschide Chrome/Edge cu portul de depanare activat (`--remote-debugging-port=9222`) și a culege selectorii DOM la clic (SilkTest style).
-3. **Pasul 3:** Conectarea scriptului Tampermonkey din `integrations/focuspilot_browser_highlighter.user.js` direct în browserul de zi cu zi pentru formatare nativă fără consum de resurse.
+1. **Pasul 1:** Extinderea selectorului interactiv pentru a extrage și selectori CSS / XPath din DOM când fereastra țintă este un browser (Chrome/Edge).
+2. **Pasul 2:** Conectarea automată a generatorului `integrations/focuspilot_browser_highlighter.user.js` cu extensia de browser a utilizatorului pentru sincronizare instantanee fără reîncărcare manuală.
+3. **Pasul 3:** Suport pentru captură de control nativ Windows UI Automation (`UIAutomationCore.dll`) pentru aplicații desktop clasice (SAP, Office, ERP) unde ID-ul de control rămâne stabil la redimensionare.

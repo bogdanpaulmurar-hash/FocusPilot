@@ -96,6 +96,7 @@ class MonitorEngine:
 
         # Cache pentru a nu redesena inutil când nu s-a schimbat starea
         self._last_active_rules_ids: List[str] = []
+        self._rule_start_times: Dict[str, float] = {}
 
     def start(self) -> None:
         """Pornește firul de execuție al scannerului."""
@@ -155,9 +156,11 @@ class MonitorEngine:
                 if not win_info:
                     if self._last_active_rules_ids:
                         self._clear_cues()
+                    self._rule_start_times.clear()
                     time.sleep(poll_interval)
                     continue
 
+                now = time.time()
                 # 2. Evaluează toate regulile active
                 rules = self.config_manager.get_rules()
                 matched_cues: List[Dict[str, Any]] = []
@@ -169,19 +172,34 @@ class MonitorEngine:
                     if not rule.get("enabled", True):
                         continue
 
+                    rule_id = rule["id"]
                     is_match = RuleEngine.evaluate_rule(rule, win_info)
                     if is_match:
-                        matched_ids.append(rule["id"])
+                        # Gestionare durată afișare (duration_sec)
+                        dur = float(rule.get("visual_cue", {}).get("duration_sec", 0))
+                        if rule_id not in self._rule_start_times:
+                            self._rule_start_times[rule_id] = now
+                            logger.info(f"[MONITOR] Regula '{rule.get('name')}' declanșată. Durată afișare configurată: {dur}s.")
+
+                        if dur > 0 and (now - self._rule_start_times[rule_id]) > dur:
+                            # Durata a expirat pentru această sesiune
+                            continue
+
+                        matched_ids.append(rule_id)
                         cue_geo = RuleEngine.calculate_cue_geometry(rule, win_info, virt_bounds)
 
                         cue_data = {
-                            "rule_id": rule["id"],
+                            "rule_id": rule_id,
                             "rule_name": rule["name"],
                             "geometry": cue_geo,  # (x, y, w, h)
                             "visual_cue": rule.get("visual_cue", {}),
                             "window_title": win_info["title"]
                         }
                         matched_cues.append(cue_data)
+                    else:
+                        # Resetează timerul când fereastra nu se mai potrivește
+                        if rule_id in self._rule_start_times:
+                            del self._rule_start_times[rule_id]
 
                 # 3. Notifică doar dacă s-a schimbat lista de reguli potrivite
                 if matched_ids != self._last_active_rules_ids:

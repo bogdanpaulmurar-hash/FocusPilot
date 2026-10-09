@@ -286,6 +286,10 @@ class MainWindow:
         if cue.get("badge_enabled", True):
             self._render_badge(cue_row, cue.get("badge_text", "⚠️ ATENȚIE"), cue.get("badge_bg", "#D90429"), "#FFFFFF")
 
+        dur = cue.get("duration_sec", 0)
+        dur_txt = f"⏱️ {dur}s" if dur > 0 else "⏱️ Permanent"
+        self._render_badge(cue_row, dur_txt, self.theme["bg_input"], self.theme["fg_secondary"])
+
     def _render_badge(self, parent: tk.Widget, text: str, bg: str, fg: str) -> None:
         b = tk.Label(parent, text=text, font=FONT_SMALL, bg=bg, fg=fg, padx=6, pady=1)
         b.pack(side="left", padx=(0, 6))

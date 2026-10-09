@@ -30,12 +30,12 @@
     "visual_cue": {
       "box_enabled": true,
       "border_color": "#FF0000",
-      "border_width": 4,
+      "border_width": 2,
       "fill_color": "#FF3333",
       "fill_opacity": 0.2,
       "arrow_enabled": true,
-      "arrow_direction": "up",
-      "arrow_color": "#FF0000",
+      "arrow_direction": "left",
+      "arrow_color": "#00ff00",
       "arrow_size": 36,
       "badge_enabled": true,
       "badge_text": "🚨 SCHIMBĂ CATEGORIA TIMA!",
@@ -46,92 +46,12 @@
     "region": {
       "mode": "window_relative",
       "rel_x": 0.285,
-      "rel_y": 0.735,
-      "width": 339,
-      "height": 94,
+      "rel_y": 0.74,
+      "width": 323,
+      "height": 76,
       "monitor_index": -1,
-      "abs_x": 543,
-      "abs_y": 762
-    }
-  },
-  {
-    "id": "rule_059e8be7",
-    "name": "Regulă Nouă de Atenționare",
-    "enabled": true,
-    "trigger": {
-      "target_type": "browser_or_window",
-      "window_title_pattern": "*TIMA Web Gateway - Google Chrome*",
-      "url_pattern": "*",
-      "process_name": "browser",
-      "text_condition": "contains",
-      "search_text": "Please change category",
-      "case_sensitive": false,
-      "is_regex": false
-    },
-    "visual_cue": {
-      "box_enabled": true,
-      "border_color": "#FF0000",
-      "border_width": 3,
-      "fill_color": "#FF3333",
-      "fill_opacity": 0.2,
-      "arrow_enabled": true,
-      "arrow_direction": "right",
-      "arrow_color": "#FF0000",
-      "arrow_size": 36,
-      "badge_enabled": true,
-      "badge_text": "⚠️ MODIFICĂ AICI!",
-      "badge_bg": "#D90429",
-      "badge_fg": "#FFFFFF",
-      "pulse_animation": true
-    },
-    "region": {
-      "mode": "window_relative",
-      "rel_x": 0.283,
-      "rel_y": 0.742,
-      "width": 338,
-      "height": 81,
-      "monitor_index": -1,
-      "abs_x": 540,
-      "abs_y": 770
-    }
-  },
-  {
-    "id": "rule_17553259",
-    "name": "Regulă Nouă de Atenționare",
-    "enabled": true,
-    "trigger": {
-      "target_type": "browser_or_window",
-      "window_title_pattern": "*",
-      "url_pattern": "*",
-      "process_name": "chrome.exe",
-      "text_condition": "contains",
-      "search_text": "",
-      "case_sensitive": false,
-      "is_regex": false
-    },
-    "visual_cue": {
-      "box_enabled": true,
-      "border_color": "#FF0000",
-      "border_width": 3,
-      "fill_color": "#FF3333",
-      "fill_opacity": 0.2,
-      "arrow_enabled": true,
-      "arrow_direction": "right",
-      "arrow_color": "#FF0000",
-      "arrow_size": 36,
-      "badge_enabled": true,
-      "badge_text": "⚠️ MODIFICĂ AICI!",
-      "badge_bg": "#D90429",
-      "badge_fg": "#FFFFFF",
-      "pulse_animation": true
-    },
-    "region": {
-      "mode": "window_relative",
-      "rel_x": 0.2,
-      "rel_y": 0.3,
-      "width": 350,
-      "height": 60,
-      "monitor_index": -1
+      "abs_x": 544,
+      "abs_y": 767
     }
   }
 ];

@@ -268,6 +268,15 @@ class RuleEditorDialog:
         tk.Checkbutton(r_bdg, text="Efect Pulsare Animat", variable=self.var_pulse, font=FONT_BODY,
                        bg=self.theme["bg_card"], fg=self.theme["fg_primary"], selectcolor=self.theme["bg_input"]).pack(side="left", padx=8)
 
+        # Durată Afișare (secunde, opțional)
+        r_dur = tk.Frame(sec3, bg=self.theme["bg_card"])
+        r_dur.pack(fill="x", pady=4)
+        tk.Label(r_dur, text="⏱️ Durată Afișare Reper:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=20, anchor="w").pack(side="left")
+        self.var_duration = tk.StringVar(value=str(self.rule.get("visual_cue", {}).get("duration_sec", 0)))
+        self.sp_duration = tk.Spinbox(r_dur, from_=0, to=300, textvariable=self.var_duration, width=6, font=FONT_BODY)
+        self.sp_duration.pack(side="left", padx=(8, 4))
+        tk.Label(r_dur, text="secunde (0 sau gol = permanent cât timp este deschisă fereastra)", font=FONT_SMALL, bg=self.theme["bg_card"], fg=self.theme["fg_secondary"]).pack(side="left", padx=6)
+
         # ── Secțiunea 4: Poziționare & Selector Interactiv ──
         sec4 = self._create_card(scroll_frame, "4. Zonă & Poziționare pe Ecran")
 
@@ -553,6 +562,12 @@ class RuleEditorDialog:
         self.rule["visual_cue"]["badge_enabled"] = self.var_badge.get()
         self.rule["visual_cue"]["badge_text"] = self.ent_badge_text.get().strip()
         self.rule["visual_cue"]["pulse_animation"] = self.var_pulse.get()
+
+        try:
+            dur = int(self.var_duration.get().strip() or 0)
+        except ValueError:
+            dur = 0
+        self.rule["visual_cue"]["duration_sec"] = dur
 
         if "region" not in self.rule:
             self.rule["region"] = {}

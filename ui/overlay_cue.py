@@ -79,8 +79,12 @@ class MultiScreenOverlay:
         self.arrow_win.title("FocusPilot_Arrow")
         self.arrow_win.overrideredirect(True)
         self.arrow_win.attributes("-topmost", True)
-        self.arrow_win.configure(bg="#FF0000")
-        self.arrow_canvas = tk.Canvas(self.arrow_win, bg="#FF0000", highlightthickness=0)
+        self.arrow_win.configure(bg="#000001")
+        try:
+            self.arrow_win.attributes("-transparentcolor", "#000001")
+        except Exception:
+            pass
+        self.arrow_canvas = tk.Canvas(self.arrow_win, bg="#000001", highlightthickness=0)
         self.arrow_canvas.pack(fill=tk.BOTH, expand=True)
         self.arrow_win.withdraw()
 
@@ -182,28 +186,43 @@ class MultiScreenOverlay:
             anim_offset = int(math.sin(self._pulse_phase * 2) * 5)
 
             if arr_dir == "up":
-                aw = arr_sz
-                ah = arr_sz + 10
+                aw = arr_sz + 8
+                ah = arr_sz + 8
                 ax = gx + (gw // 2) - (aw // 2)
-                ay = gy + gh + 6 + anim_offset
+                ay = gy + gh + 4 + anim_offset
+                pts = [aw // 2, 4, 4, ah - 4, (aw // 2) - 4, ah - 12, (aw // 2) - 4, ah - 2, (aw // 2) + 4, ah - 2, (aw // 2) + 4, ah - 12, aw - 4, ah - 4]
             elif arr_dir == "down":
-                aw = arr_sz
-                ah = arr_sz + 10
+                aw = arr_sz + 8
+                ah = arr_sz + 8
                 ax = gx + (gw // 2) - (aw // 2)
-                ay = gy - ah - 6 - anim_offset
+                ay = gy - ah - 4 - anim_offset
+                pts = [4, 4, (aw // 2) - 4, 12, (aw // 2) - 4, 2, (aw // 2) + 4, 2, (aw // 2) + 4, 12, aw - 4, 4, aw // 2, ah - 4]
             elif arr_dir == "right":
-                aw = arr_sz + 10
-                ah = arr_sz
-                ax = gx - aw - 6 - anim_offset
+                aw = arr_sz + 8
+                ah = arr_sz + 8
+                ax = gx - aw - 4 - anim_offset
                 ay = gy + (gh // 2) - (ah // 2)
+                pts = [4, 4, ah // 2, 4, ah - 4, aw // 2, ah // 2, aw - 4, 4, aw - 4]
             else: # left
-                aw = arr_sz + 10
-                ah = arr_sz
-                ax = gx + gw + 6 + anim_offset
+                aw = arr_sz + 8
+                ah = arr_sz + 8
+                ax = gx + gw + 4 + anim_offset
                 ay = gy + (gh // 2) - (ah // 2)
+                pts = [aw - 4, 4, aw - 4, ah - 4, 4, ah // 2]
 
-            self.arrow_win.configure(bg=arr_col)
             self.arrow_win.geometry(f"{aw}x{ah}+{ax}+{ay}")
+            self.arrow_canvas.delete("all")
+            # Desenăm conturul ascuțit al săgeții
+            if arr_dir == "up":
+                triangle = [aw // 2, 2, 4, ah - 4, aw - 4, ah - 4]
+            elif arr_dir == "down":
+                triangle = [4, 4, aw - 4, 4, aw // 2, ah - 2]
+            elif arr_dir == "right":
+                triangle = [4, 4, aw - 2, ah // 2, 4, ah - 4]
+            else: # left
+                triangle = [aw - 4, 4, aw - 4, ah - 4, 2, ah // 2]
+
+            self.arrow_canvas.create_polygon(triangle, fill=arr_col, outline="#8B0000", width=2)
             self.arrow_win.deiconify()
             self.arrow_win.lift()
             self.arrow_win.attributes("-topmost", True)
@@ -213,7 +232,7 @@ class MultiScreenOverlay:
                 self.arrow_win.withdraw()
 
         self._is_visible = True
-        logger.info(f"[OVERLAY SILKTEST] Bare opace afișate cu succes la coordonatele ({gx}, {gy}, {gw}, {gh}).")
+        logger.info(f"[OVERLAY FRAME-BORDER] Bare opace afișate cu succes la coordonatele ({gx}, {gy}, {gw}, {gh}).")
 
     def _start_pulse_loop(self) -> None:
         self._pulse_phase += 0.35
