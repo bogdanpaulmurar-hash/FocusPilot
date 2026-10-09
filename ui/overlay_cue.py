@@ -21,6 +21,7 @@ class MultiScreenOverlay:
 
     def __init__(self):
         self.master: Optional[tk.Tk] = None
+        self.root: Optional[tk.Tk] = None
         self.active_cues: List[Dict[str, Any]] = []
 
         # 4 ferestre opace pentru chenar (Top, Bottom, Left, Right)
@@ -45,6 +46,7 @@ class MultiScreenOverlay:
     def init_overlay(self, master: tk.Tk) -> None:
         """Inițializează componentele vizuale opace."""
         self.master = master
+        self.root = master
 
         # 1. Creare 4 bare pentru chenar
         self.bars = []
