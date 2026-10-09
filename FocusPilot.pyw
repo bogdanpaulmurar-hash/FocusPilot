@@ -16,15 +16,33 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-# Configurare logging în fișier pentru depanare silențioasă
-LOG_FILE = os.path.join(BASE_DIR, "focuspilot.log")
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    encoding="utf-8"
-)
+# Configurare logging în fișier TXT dedicat pentru depanare
+LOG_FILE = os.path.join(BASE_DIR, "focuspilot_log.txt")
+file_handler = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+file_handler.setFormatter(file_formatter)
+
 logger = logging.getLogger("FocusPilot")
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+logger.addHandler(file_handler)
+logger.propagate = False
+
+def handle_uncaught_exception(exc_type, exc_value, exc_traceback):
+    """Prinde și salvează orice eroare neprevăzută în focuspilot_log.txt."""
+    import traceback
+    err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    logger.critical(f"EROARE FATALA NECAPTATA:\n{err_msg}")
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"\n[{datetime.datetime.now()}] CRASH FATAL:\n{err_msg}\n")
+    except Exception:
+        pass
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+import datetime
+sys.excepthook = handle_uncaught_exception
 
 from core.config_manager import ConfigManager
 from core.monitor_engine import MonitorEngine
@@ -208,5 +226,25 @@ class FocusPilotApp:
 
 
 if __name__ == "__main__":
-    app = FocusPilotApp()
-    app.start()
+    try:
+        logger.info("=== START SESIUNE FOCUSPILOT ===")
+        app = FocusPilotApp()
+        app.start()
+    except Exception as exc:
+        import traceback
+        err_details = traceback.format_exc()
+        logger.critical(f"Eroare la pornirea FocusPilot:\n{err_details}")
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"\n[{datetime.datetime.now()}] EROARE PORNIRE:\n{err_details}\n")
+        except Exception:
+            pass
+        try:
+            from tkinter import messagebox
+            messagebox.showerror(
+                "Eroare FocusPilot",
+                f"A apărut o problemă la pornire. Detaliile au fost salvate în:\n{LOG_FILE}\n\nEroare: {exc}"
+            )
+        except Exception:
+            pass
+        sys.exit(1)

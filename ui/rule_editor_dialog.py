@@ -94,7 +94,7 @@ class RuleEditorDialog:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
-        canvas.configure(yview_scroll=scrollbar.set)
+        canvas.configure(yscrollcommand=scrollbar.set)
 
         scrollbar.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)

@@ -15,6 +15,7 @@ env/
 ## Logs & Temp
 *.log
 *.tmp
+focuspilot_log.txt
 logs/
 
 ## OS & Editors

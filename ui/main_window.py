@@ -127,7 +127,7 @@ class MainWindow:
             lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
         self.canvas_window = self.canvas.create_window((0, 0), window=self.rules_frame, anchor="nw")
-        self.canvas.configure(yview_scroll=self.scrollbar.set)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
