@@ -29,6 +29,10 @@ root_logger.setLevel(logging.DEBUG)
 root_logger.handlers.clear()
 root_logger.addHandler(file_handler)
 
+# Reducem zgomotul de debug din librăriile de nivel scăzut
+logging.getLogger("comtypes").setLevel(logging.WARNING)
+logging.getLogger("PIL").setLevel(logging.INFO)
+
 logger = logging.getLogger("FocusPilot")
 logger.setLevel(logging.DEBUG)
 
