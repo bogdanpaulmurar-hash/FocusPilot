@@ -177,27 +177,47 @@ class MonitorEngine:
                     rule_id = rule["id"]
                     is_match = RuleEngine.evaluate_rule(rule, win_info)
                     if is_match:
-                        # Gestionare durată afișare (duration_sec)
-                        dur = float(rule.get("visual_cue", {}).get("duration_sec", 0))
                         if rule_id not in self._rule_start_times:
                             self._rule_start_times[rule_id] = now
-                            logger.info(f"[MONITOR] Regula '{rule.get('name')}' declanșată. Durată afișare configurată: {dur}s.")
+                            logger.info(f"[MONITOR] Regula '{rule.get('name')}' declanșată.")
 
-                        if dur > 0 and (now - self._rule_start_times[rule_id]) > dur:
-                            # Durata a expirat pentru această sesiune
-                            continue
+                        elapsed = now - self._rule_start_times[rule_id]
+                        steps = rule.get("steps", [])
 
-                        cue_geo = RuleEngine.calculate_cue_geometry(rule, win_info, virt_bounds)
+                        active_step = None
+                        visual_to_use = dict(rule.get("visual_cue", {}))
+
+                        if steps:
+                            active_step = RuleEngine.get_active_step_for_rule(rule, elapsed)
+                            if not active_step:
+                                # Toate etapele din pachetul secvențial s-au terminat
+                                continue
+                            # Îmbină proprietățile vizuale ale pasului activ
+                            if "visual_cue" in active_step:
+                                visual_to_use.update(active_step["visual_cue"])
+                            if "badge_text" in active_step:
+                                visual_to_use["badge_text"] = active_step["badge_text"]
+                            if "arrow_direction" in active_step:
+                                visual_to_use["arrow_direction"] = active_step["arrow_direction"]
+                            if "arrow_color" in active_step:
+                                visual_to_use["arrow_color"] = active_step["arrow_color"]
+                        else:
+                            # Gestionare durată afișare standard (duration_sec)
+                            dur = float(rule.get("visual_cue", {}).get("duration_sec", 0))
+                            if dur > 0 and elapsed > dur:
+                                continue
+
+                        cue_geo = RuleEngine.calculate_cue_geometry(rule, win_info, virt_bounds, active_step=active_step)
                         if cue_geo is None:
-                            # Elementul nu se află în cadrul vizibil al ecranului (e.g. scrollat în afara paginii)
                             continue
 
                         matched_ids.append(rule_id)
+                        rule_disp_name = f"{rule['name']} (Pas {active_step['step_index']}/{active_step['total_steps']}: {active_step.get('name', '')})" if active_step else rule["name"]
                         cue_data = {
                             "rule_id": rule_id,
-                            "rule_name": rule["name"],
+                            "rule_name": rule_disp_name,
                             "geometry": cue_geo,  # (x, y, w, h)
-                            "visual_cue": rule.get("visual_cue", {}),
+                            "visual_cue": visual_to_use,
                             "window_title": win_info["title"]
                         }
                         matched_cues.append(cue_data)

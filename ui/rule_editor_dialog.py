@@ -19,17 +19,21 @@ logger = logging.getLogger(__name__)
 class RuleEditorDialog:
     """Dialog modal pentru creare sau editare de regulă de formatare condițională."""
 
-    def __init__(self, parent: tk.Toplevel, theme_name: str, rule: Optional[Dict[str, Any]], on_save: Callable[[Dict[str, Any]], None]):
+    def __init__(self, parent: tk.Toplevel, theme_name: str, rule: Optional[Dict[str, Any]], on_save: Callable[[Dict[str, Any]], None], on_test_cue: Optional[Callable[[Dict[str, Any]], None]] = None):
         self.parent = parent
         self.theme_name = theme_name
         self.theme = get_theme(theme_name)
         self.on_save = on_save
+        self.on_test_cue = on_test_cue
 
         self.is_new = (rule is None)
         self.rule: Dict[str, Any] = copy.deepcopy(rule) if rule else self._get_default_rule()
+        self.steps: List[Dict[str, Any]] = copy.deepcopy(self.rule.get("steps", []))
 
         self.dialog: Optional[tk.Toplevel] = None
         self.preview_canvas: Optional[tk.Canvas] = None
+        self.criteria_entries: List[tk.Entry] = []
+        self.criteria_rows: List[tk.Frame] = []
 
         self._build_ui()
 
@@ -42,14 +46,17 @@ class RuleEditorDialog:
                 "target_type": "browser_or_window",
                 "window_title_pattern": "*",
                 "url_pattern": "*",
-                "process_name": "msedge.exe",
+                "process_name": "browser",
                 "text_condition": "contains",
                 "search_text": "",
+                "additional_criteria": "",
+                "criteria_logic": "OR",
                 "case_sensitive": False,
                 "is_regex": False
             },
             "visual_cue": {
                 "box_enabled": True,
+                "box_scope": "custom_region",
                 "border_color": "#FF0000",
                 "border_width": 3,
                 "fill_color": "#FF3333",
@@ -57,12 +64,15 @@ class RuleEditorDialog:
                 "arrow_enabled": True,
                 "arrow_direction": "right",
                 "arrow_color": "#FF0000",
-                "arrow_size": 36,
+                "arrow_style": "slim",     # Subțire & elegantă
+                "arrow_width": 14,          # Grosime/lățime subțire
+                "arrow_size": 22,           # Lungime fină
                 "badge_enabled": True,
                 "badge_text": "⚠️ MODIFICĂ AICI!",
                 "badge_bg": "#D90429",
                 "badge_fg": "#FFFFFF",
-                "pulse_animation": True
+                "pulse_animation": True,
+                "duration_sec": 0
             },
             "region": {
                 "mode": "window_relative",
@@ -71,7 +81,8 @@ class RuleEditorDialog:
                 "width": 350,
                 "height": 60,
                 "monitor_index": -1
-            }
+            },
+            "steps": []
         }
 
     def _build_ui(self) -> None:
@@ -203,13 +214,44 @@ class RuleEditorDialog:
         combo_cond = ttk.Combobox(r_cond, textvariable=self.var_cond, values=[opt[1] for opt in self.cond_options], state="readonly", width=16)
         combo_cond.pack(side="left", padx=(8, 0))
 
-        # Text Căutat
+        # Text Căutat (Criteriul Principal #1)
         r_txt = tk.Frame(sec2, bg=self.theme["bg_card"])
         r_txt.pack(fill="x", pady=4)
-        tk.Label(r_txt, text="Text Căutat / Pattern:", font=FONT_BODY_BOLD, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
+        tk.Label(r_txt, text="Criteriu Text #1:", font=FONT_BODY_BOLD, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
         self.ent_search_text = tk.Entry(r_txt, font=FONT_BODY, bg=self.theme["bg_input"], fg=self.theme["fg_primary"], insertbackground=self.theme["fg_primary"], relief="flat")
         self.ent_search_text.insert(0, self.rule.get("trigger", {}).get("search_text", ""))
-        self.ent_search_text.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        self.ent_search_text.pack(side="left", fill="x", expand=True, padx=(8, 6))
+
+        # Butonul [+] Adaugă Criteriu
+        self.btn_add_criterion = tk.Button(
+            r_txt, text="➕ Criteriu", font=FONT_BODY_BOLD,
+            bg=self.theme["accent"], fg="#FFFFFF", relief="flat", padx=10, pady=2,
+            cursor="hand2", command=self._add_criterion_row
+        )
+        self.btn_add_criterion.pack(side="right")
+
+        # Container dinamic pentru criterii suplimentare (inițial ascuns dacă nu există criterii)
+        self.multi_criteria_container = tk.Frame(sec2, bg=self.theme["bg_card"])
+        self.multi_criteria_container.pack(fill="x", pady=(2, 0))
+
+        # Bară de logică (OR / AND) pentru criterii multiple (afișată doar când există criterii suplimentare)
+        self.logic_bar = tk.Frame(self.multi_criteria_container, bg=self.theme["bg_input"], padx=8, pady=4, bd=1, relief="solid")
+        tk.Label(self.logic_bar, text="🔗 Relație între Criterii:", font=FONT_BODY_BOLD, bg=self.theme["bg_input"], fg=self.theme["fg_primary"]).pack(side="left", padx=(0, 8))
+        self.var_criteria_logic = tk.StringVar(value=self.rule.get("trigger", {}).get("criteria_logic", "OR"))
+        self.cb_criteria_logic = ttk.Combobox(self.logic_bar, textvariable=self.var_criteria_logic, values=["OR (Oricare)", "AND (Toate simultan)"], state="readonly", width=18)
+        self.cb_criteria_logic.pack(side="left")
+        tk.Label(
+            self.logic_bar,
+            text="• OR = declanșează dacă oricare criteriu e găsit | AND = declanșează doar dacă toate sunt prezente",
+            font=FONT_SMALL, bg=self.logic_bar["bg"], fg=self.theme["fg_secondary"]
+        ).pack(side="left", padx=(10, 0))
+
+        # Sub-container unde vor sta rândurile efective de criterii
+        self.criteria_list_frame = tk.Frame(self.multi_criteria_container, bg=self.theme["bg_card"])
+        self.criteria_list_frame.pack(fill="x", pady=(4, 0))
+
+        # Populăm criteriile suplimentare existente
+        self._init_existing_additional_criteria()
 
         # ── Secțiunea 3: Formatare Vizuală & Alertă (Săgeată, Chenar, Badge) ──
         sec3 = self._create_card(scroll_frame, "3. Formatare Vizuală & Semnalizare (Visual Cue)")
@@ -232,24 +274,71 @@ class RuleEditorDialog:
         sp_width = tk.Spinbox(r_box, from_=1, to=10, textvariable=self.var_border_w, width=4, command=self._update_preview)
         sp_width.pack(side="left", padx=6)
 
-        # Săgeată Roșie
+        # Acoperire Chenar (Zonă Extinsă vs Text Strâns vs Tot Rândul) + Dimensiuni W x H
+        r_box_scope = tk.Frame(sec3, bg=self.theme["bg_card"])
+        r_box_scope.pack(fill="x", pady=4)
+        tk.Label(r_box_scope, text="Acoperire Chenar:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
+
+        cur_scope = self.rule.get("visual_cue", {}).get("box_scope", "custom_region")
+        scope_map = {
+            "custom_region": "Zonă Extinsă (W x H din selecție)",
+            "exact_text": "Fix pe Textul Detectat (Strâns)",
+            "full_row": "Tot Rândul Orizontal (Full Row)"
+        }
+        self.var_box_scope = tk.StringVar(value=scope_map.get(cur_scope, "Zonă Extinsă (W x H din selecție)"))
+        cb_scope = ttk.Combobox(r_box_scope, textvariable=self.var_box_scope, values=list(scope_map.values()), state="readonly", width=28)
+        cb_scope.bind("<<ComboboxSelected>>", lambda e: self._update_preview())
+        cb_scope.pack(side="left", padx=(8, 10))
+
+        tk.Label(r_box_scope, text="Lățime:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left")
+        init_w = int(self.rule.get("region", {}).get("width", 816 if "GSP" in self.rule.get("name", "") else 350))
+        self.var_region_w = tk.IntVar(value=init_w)
+        sp_rw = tk.Spinbox(r_box_scope, from_=40, to=3800, textvariable=self.var_region_w, width=5, font=FONT_BODY, command=self._update_preview)
+        sp_rw.bind("<KeyRelease>", lambda e: self._update_preview())
+        sp_rw.pack(side="left", padx=(4, 8))
+
+        tk.Label(r_box_scope, text="Înălțime:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left")
+        init_h = int(self.rule.get("region", {}).get("height", 39 if "GSP" in self.rule.get("name", "") else 60))
+        self.var_region_h = tk.IntVar(value=init_h)
+        sp_rh = tk.Spinbox(r_box_scope, from_=15, to=2000, textvariable=self.var_region_h, width=4, font=FONT_BODY, command=self._update_preview)
+        sp_rh.bind("<KeyRelease>", lambda e: self._update_preview())
+        sp_rh.pack(side="left", padx=(4, 6))
+
+        # Săgeată de Atenționare
         r_arr = tk.Frame(sec3, bg=self.theme["bg_card"])
         r_arr.pack(fill="x", pady=4)
         self.var_arrow = tk.BooleanVar(value=self.rule.get("visual_cue", {}).get("arrow_enabled", True))
-        tk.Checkbutton(r_arr, text="Săgeată Roșie de Atenționare", variable=self.var_arrow, font=FONT_BODY_BOLD,
+        tk.Checkbutton(r_arr, text="Săgeată de Atenționare", variable=self.var_arrow, font=FONT_BODY_BOLD,
                        bg=self.theme["bg_card"], fg=self.theme["fg_primary"], selectcolor=self.theme["bg_input"],
                        command=self._update_preview).pack(side="left")
 
-        tk.Label(r_arr, text="Direcție:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left", padx=(12, 4))
-        self.var_arrow_dir = tk.StringVar(value=self.rule.get("visual_cue", {}).get("arrow_direction", "right"))
-        cb_dir = ttk.Combobox(r_arr, textvariable=self.var_arrow_dir, values=["right", "left", "down", "up"], state="readonly", width=8)
+        tk.Label(r_arr, text="Direcție:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left", padx=(10, 2))
+        self.var_arrow_dir = tk.StringVar(value=self.rule.get("visual_cue", {}).get("arrow_direction", "down"))
+        cb_dir = ttk.Combobox(r_arr, textvariable=self.var_arrow_dir, values=["down", "up", "right", "left"], state="readonly", width=7)
         cb_dir.bind("<<ComboboxSelected>>", lambda e: self._update_preview())
         cb_dir.pack(side="left")
+
+        # Stil Săgeată (Subțire / Triunghi / Clasic)
+        tk.Label(r_arr, text="Stil:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left", padx=(10, 2))
+        raw_style = self.rule.get("visual_cue", {}).get("arrow_style", "slim")
+        style_map = {"slim": "Subțire & Fină", "triangle": "Triunghi Zvelt", "classic": "Clasică (Standard)"}
+        self.var_arrow_style = tk.StringVar(value=style_map.get(raw_style, "Subțire & Fină"))
+        cb_style = ttk.Combobox(r_arr, textvariable=self.var_arrow_style, values=["Subțire & Fină", "Triunghi Zvelt", "Clasică (Standard)"], state="readonly", width=14)
+        cb_style.bind("<<ComboboxSelected>>", lambda e: self._on_arrow_style_changed())
+        cb_style.pack(side="left")
+
+        # Lățime / Grosime Săgeată
+        tk.Label(r_arr, text="Lățime:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left", padx=(10, 2))
+        default_w = 14 if raw_style != "classic" else 32
+        self.var_arrow_w = tk.IntVar(value=self.rule.get("visual_cue", {}).get("arrow_width", default_w))
+        sp_arr_w = tk.Spinbox(r_arr, from_=6, to=44, textvariable=self.var_arrow_w, width=4, font=FONT_BODY, command=self._update_preview)
+        sp_arr_w.bind("<KeyRelease>", lambda e: self._update_preview())
+        sp_arr_w.pack(side="left")
 
         self.arrow_color = self.rule.get("visual_cue", {}).get("arrow_color", "#FF0000")
         self.btn_arr_col = tk.Button(r_arr, text="🎨 Culoare Săgeată", bg=self.arrow_color, fg="#FFFFFF",
                                      font=FONT_SMALL, relief="flat", command=self._pick_arrow_color)
-        self.btn_arr_col.pack(side="left", padx=10)
+        self.btn_arr_col.pack(side="left", padx=8)
 
         # Badge Text
         r_bdg = tk.Frame(sec3, bg=self.theme["bg_card"])
@@ -302,28 +391,75 @@ class RuleEditorDialog:
         self.lbl_snip = tk.Label(r_snip, text=snip_txt, font=FONT_SMALL, bg=self.theme["bg_card"], fg=self.theme["accent"] if tmpl_cur else self.theme["fg_secondary"], anchor="w")
         self.lbl_snip.pack(side="left", fill="x", expand=True)
 
-        # ── Secțiunea 5: Live Preview ──
-        sec5 = self._create_card(scroll_frame, "5. Previzualizare Reper Vizual (Live Preview)")
-        self.preview_canvas = tk.Canvas(sec5, height=130, bg="#11161B", highlightthickness=1, highlightbackground=self.theme["border"])
+        # ── Secțiunea 5: Pachet de Condiții & Etape Secvențiale ──
+        sec5 = self._create_card(scroll_frame, "5. Pachet de Condiții & Succesiune în Timp (Workflow / Pași în Lanț)")
+        
+        r_step_header = tk.Frame(sec5, bg=self.theme["bg_card"])
+        r_step_header.pack(fill="x", pady=4)
+        
+        self.var_has_steps = tk.BooleanVar(value=bool(self.steps))
+        chk_steps = tk.Checkbutton(
+            r_step_header, text="Activează succesiune de pași (condiții diferite la intervale de timp diferite)",
+            variable=self.var_has_steps, font=FONT_BODY_BOLD,
+            bg=self.theme["bg_card"], fg=self.theme["fg_primary"], selectcolor=self.theme["bg_input"],
+            command=self._toggle_steps_panel
+        )
+        chk_steps.pack(side="left")
+
+        btn_add_step = tk.Button(
+            r_step_header, text="➕ Adaugă Pas în Lanț", font=FONT_SMALL,
+            bg=self.theme["accent"], fg="#FFFFFF", relief="flat", padx=8, pady=2,
+            command=self._add_step_dialog
+        )
+        btn_add_step.pack(side="right")
+
+        btn_del_step = tk.Button(
+            r_step_header, text="🗑️ Șterge Pas", font=FONT_SMALL,
+            bg=self.theme["bg_hover"], fg=self.theme["alert_red"], relief="flat", padx=8, pady=2,
+            command=self._remove_last_step
+        )
+        btn_del_step.pack(side="right", padx=6)
+
+        self.steps_container = tk.Frame(sec5, bg=self.theme["bg_card"])
+        self.steps_container.pack(fill="x", pady=(4, 0))
+        self._render_steps_list()
+
+        # ── Secțiunea 6: Live Preview ──
+        sec6 = self._create_card(scroll_frame, "6. Previzualizare Reper Vizual (Live Preview)")
+        self.preview_canvas = tk.Canvas(sec6, height=130, bg="#11161B", highlightthickness=1, highlightbackground=self.theme["border"])
         self.preview_canvas.pack(fill="x", padx=4, pady=4)
 
-        # ── Butoane Acțiune (Salvează / Anulează) ──
+        # ── Butoane Acțiune (Salvează / Anulează / Test Live / Diagnostic) ──
         btn_row = tk.Frame(scroll_frame, bg=self.theme["bg_main"])
         btn_row.pack(fill="x", padx=content_pad, pady=(12, 16))
 
         btn_cancel = tk.Button(
             btn_row, text="Anulează", font=FONT_BODY,
             bg=self.theme["bg_card"], fg=self.theme["fg_primary"],
-            relief="flat", padx=18, pady=6, command=self.dialog.destroy
+            relief="flat", padx=14, pady=6, command=self.dialog.destroy
         )
-        btn_cancel.pack(side="right", padx=(8, 0))
+        btn_cancel.pack(side="right", padx=(6, 0))
 
         btn_save = tk.Button(
             btn_row, text="💾 Salvează Regula", font=FONT_BODY_BOLD,
             bg=self.theme["primary_btn"], fg="#FFFFFF",
-            relief="flat", padx=22, pady=6, command=self._save_and_close
+            relief="flat", padx=18, pady=6, command=self._save_and_close
         )
-        btn_save.pack(side="right")
+        btn_save.pack(side="right", padx=(6, 0))
+
+        btn_test_live = tk.Button(
+            btn_row, text="🎯 Testează pe Ecran Acum (Live)", font=FONT_BODY_BOLD,
+            bg=self.theme["accent"], fg="#FFFFFF",
+            relief="flat", padx=16, pady=6, command=self._test_current_rule
+        )
+        btn_test_live.pack(side="right", padx=(6, 0))
+
+        btn_diag = tk.Button(
+            btn_row, text="🔍 Diagnosticare Live", font=FONT_BODY_BOLD,
+            bg="#004B52", fg="#FFFFFF",
+            relief="flat", padx=14, pady=6, command=self._run_live_diagnostic
+        )
+        btn_diag.pack(side="left")
 
         self._update_preview()
 
@@ -456,6 +592,11 @@ class RuleEditorDialog:
             if hasattr(self, "lbl_snip"):
                 self.lbl_snip.configure(text="📸 Niciun șablon vizual (mod poziție relativă)", fg=self.theme["fg_secondary"])
 
+        if hasattr(self, "var_region_w"):
+            self.var_region_w.set(data.get("width", 320))
+        if hasattr(self, "var_region_h"):
+            self.var_region_h.set(data.get("height", 60))
+
         messagebox.showinfo(
             "FocusPilot",
             f"✅ Câmp capturat cu succes!\n\n"
@@ -465,6 +606,161 @@ class RuleEditorDialog:
             f"• Urmărire dinamică (Scroll Tracking): ACTIVĂ",
             parent=self.dialog
         )
+
+    def _init_existing_additional_criteria(self) -> None:
+        """Populează rândurile de criterii suplimentare existente la deschiderea dialogului."""
+        raw_add = self.rule.get("trigger", {}).get("additional_criteria", "")
+        items = []
+        if isinstance(raw_add, list):
+            items = [str(x).strip() for x in raw_add if str(x).strip()]
+        elif isinstance(raw_add, str) and raw_add.strip():
+            items = [p.strip() for p in re.split(r"[\n\r;|]+", raw_add) if p.strip()]
+
+        for val in items:
+            self._create_criterion_entry(val)
+        self._refresh_criteria_ui_visibility()
+
+    def _add_criterion_row(self) -> None:
+        """Adaugă un nou câmp de criteriu la apăsarea butonului [+] (obligatoriu)."""
+        self._create_criterion_entry(initial_value="")
+        self._refresh_criteria_ui_visibility()
+
+    def _create_criterion_entry(self, initial_value: str = "") -> None:
+        """Creează un rând cu etichetă, Entry și buton de ștergere [-] pentru un criteriu."""
+        idx = len(self.criteria_entries) + 2  # #1 este cel principal
+        row = tk.Frame(self.criteria_list_frame, bg=self.theme["bg_card"])
+        row.pack(fill="x", pady=2)
+
+        lbl = tk.Label(row, text=f"Criteriu Text #{idx}:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w")
+        lbl.pack(side="left")
+
+        entry = tk.Entry(row, font=FONT_BODY, bg=self.theme["bg_input"], fg=self.theme["fg_primary"], insertbackground=self.theme["fg_primary"], relief="flat")
+        entry.insert(0, initial_value)
+        entry.pack(side="left", fill="x", expand=True, padx=(8, 6))
+
+        # Buton de eliminare criteriu
+        btn_remove = tk.Button(
+            row, text="✖", font=FONT_SMALL,
+            bg=self.theme["bg_card"], fg=self.theme["alert_red"], relief="flat", bd=0, padx=8, cursor="hand2",
+            command=lambda r=row, e=entry: self._remove_criterion_row(r, e)
+        )
+        btn_remove.pack(side="right")
+
+        self.criteria_entries.append(entry)
+        self.criteria_rows.append(row)
+
+    def _remove_criterion_row(self, row: tk.Frame, entry: tk.Entry) -> None:
+        """Șterge un rând de criteriu și recalculează indecșii rămași."""
+        if entry in self.criteria_entries:
+            idx = self.criteria_entries.index(entry)
+            self.criteria_entries.remove(entry)
+            if row in self.criteria_rows:
+                self.criteria_rows.remove(row)
+            row.destroy()
+
+            # Renumerotează etichetele rămase
+            for i, r in enumerate(self.criteria_rows):
+                for child in r.winfo_children():
+                    if isinstance(child, tk.Label):
+                        child.configure(text=f"Criteriu Text #{i + 2}:")
+                        break
+
+            self._refresh_criteria_ui_visibility()
+
+    def _refresh_criteria_ui_visibility(self) -> None:
+        """Afișează bara de logică și containerul de criterii doar dacă există criterii suplimentare adăugate prin [+]."""
+        if self.criteria_entries:
+            self.logic_bar.pack(fill="x", pady=(2, 4), before=self.criteria_list_frame)
+            self.multi_criteria_container.pack(fill="x", pady=(2, 0))
+        else:
+            self.logic_bar.pack_forget()
+            self.multi_criteria_container.pack_forget()
+
+    def _get_all_criteria_values(self) -> List[str]:
+        """Extrage valorile ne-vide din toate câmpurile de criterii suplimentare."""
+        result = []
+        for e in self.criteria_entries:
+            val = e.get().strip()
+            if val:
+                result.append(val)
+        return result
+
+    def _on_arrow_style_changed(self) -> None:
+        """Ajustează automat grosimea la selectarea stilului de săgeată."""
+        style_name = self.var_arrow_style.get()
+        if "Subțire" in style_name or "Zvelt" in style_name:
+            self.var_arrow_w.set(14)
+        else:
+            self.var_arrow_w.set(32)
+        self._update_preview()
+
+    def _toggle_steps_panel(self) -> None:
+        """Activează sau dezactivează panoul de pași secvențiali."""
+        if self.var_has_steps.get() and not self.steps:
+            # Inițializăm automat primul pas pe baza configurării curente
+            self._add_step_dialog()
+        self._render_steps_list()
+
+    def _render_steps_list(self) -> None:
+        """Afișează lista vizuală de pași secvențiali."""
+        for child in self.steps_container.winfo_children():
+            child.destroy()
+
+        if not self.var_has_steps.get():
+            lbl_info = tk.Label(
+                self.steps_container,
+                text="ℹ️ Mod Standard (un singur pas). Bifați căsuța pentru a adăuga mai mulți pași secvențiali la intervale diferite.",
+                font=FONT_SMALL, bg=self.theme["bg_card"], fg=self.theme["fg_secondary"]
+            )
+            lbl_info.pack(anchor="w", pady=4)
+            return
+
+        if not self.steps:
+            lbl_empty = tk.Label(
+                self.steps_container,
+                text="Nu există încă pași adăugați. Apăsați '➕ Adaugă Pas în Lanț'.",
+                font=FONT_SMALL, bg=self.theme["bg_card"], fg=self.theme["fg_secondary"]
+            )
+            lbl_empty.pack(anchor="w", pady=4)
+            return
+
+        for idx, step in enumerate(self.steps):
+            row = tk.Frame(self.steps_container, bg=self.theme["bg_input"], padx=8, pady=4, bd=1, relief="solid")
+            row.pack(fill="x", pady=3)
+
+            p_txt = f"📍 Pas #{idx+1}: {step.get('name', 'Etapă')} | Start: {step.get('delay_sec', 0)}s | Durată: {step.get('duration_sec', 3)}s | Badge: '{step.get('badge_text', '')}' | Săgeată: {step.get('arrow_direction', 'down')}"
+            tk.Label(row, text=p_txt, font=FONT_SMALL, bg=self.theme["bg_input"], fg=self.theme["fg_primary"]).pack(side="left")
+
+    def _add_step_dialog(self) -> None:
+        """Adaugă o nouă etapă în pachetul secvențial."""
+        step_idx = len(self.steps) + 1
+        calc_delay = 0
+        if self.steps:
+            last = self.steps[-1]
+            calc_delay = int(last.get("delay_sec", 0)) + int(last.get("duration_sec", 3))
+
+        new_step = {
+            "step_index": step_idx,
+            "name": f"Etapa {step_idx}",
+            "delay_sec": calc_delay,
+            "duration_sec": 3,
+            "search_text": self.ent_search_text.get().strip(),
+            "badge_text": f"Pas #{step_idx}: " + (self.ent_badge_text.get().strip() or "Acțiune"),
+            "arrow_direction": self.var_arrow_dir.get(),
+            "arrow_color": self.arrow_color,
+            "region": copy.deepcopy(self.rule.get("region", {}))
+        }
+        self.steps.append(new_step)
+        self.var_has_steps.set(True)
+        self._render_steps_list()
+
+    def _remove_last_step(self) -> None:
+        """Șterge ultimul pas din pachetul secvențial."""
+        if self.steps:
+            self.steps.pop()
+            if not self.steps:
+                self.var_has_steps.set(False)
+            self._render_steps_list()
 
     def _update_preview(self) -> None:
         if not self.preview_canvas:
@@ -490,46 +786,93 @@ class RuleEditorDialog:
             text="[ Câmp Formular Web / Desktop ]", fill="#A6B4C2", font=FONT_BODY, anchor="w"
         )
 
-        # 1. Chenar roșu / alertă
+        # 1. Chenar alertă
         if self.var_box.get():
             bw = self.var_border_w.get()
+            scope_val = self.var_box_scope.get() if hasattr(self, "var_box_scope") else "Zonă Extinsă"
+            if "Exact" in scope_val:
+                bx_draw, by_draw, bw_draw, bh_draw = box_x, box_y, box_w, box_h
+            elif "Rând" in scope_val:
+                bx_draw, by_draw, bw_draw, bh_draw = 15, box_y, cw - 30, box_h
+            else: # Zonă Extinsă
+                rw = self.var_region_w.get() if hasattr(self, "var_region_w") else box_w
+                rh = self.var_region_h.get() if hasattr(self, "var_region_h") else box_h
+                scaled_w = min(cw - 30, max(box_w, rw // 2))
+                bx_draw, by_draw, bw_draw, bh_draw = max(15, box_x - 100), box_y, scaled_w, max(box_h, rh)
+
             self.preview_canvas.create_rectangle(
-                box_x, box_y, box_x + box_w, box_y + box_h,
+                bx_draw, by_draw, bx_draw + bw_draw, by_draw + bh_draw,
                 outline=self.border_color, width=bw
             )
 
-        # 2. Săgeată indicatoare
-        arrow_sz = 26 if self.var_arrow.get() else 0
-        arrow_dir = self.var_arrow_dir.get() if self.var_arrow.get() else "right"
-
+        # 2. Săgeată indicatoare (Subțire sau clasică)
         if self.var_arrow.get():
             col = self.arrow_color
-            sz = arrow_sz
-            if arrow_dir == "right":
-                tip_x = box_x - 12
-                tip_y = box_y + (box_h // 2)
-                pts = [tip_x - sz, tip_y - 6, tip_x - 12, tip_y - 6, tip_x - 12, tip_y - 12, tip_x, tip_y, tip_x - 12, tip_y + 12, tip_x - 12, tip_y + 6, tip_x - sz, tip_y + 6]
-            elif arrow_dir == "down":
+            arrow_dir = self.var_arrow_dir.get()
+            arrow_w = self.var_arrow_w.get() if hasattr(self, "var_arrow_w") else 14
+            style_name = self.var_arrow_style.get() if hasattr(self, "var_arrow_style") else "Subțire & Fină"
+            is_slim = "Subțire" in style_name
+            is_triangle = "Triunghi" in style_name
+            
+            hw = max(6, arrow_w)
+            total_l = 22 if is_slim else 26
+            stem_w = max(2, min(5, hw // 3))
+
+            if arrow_dir == "down":
                 tip_x = box_x + (box_w // 2)
-                tip_y = box_y - 12
-                pts = [tip_x - 6, tip_y - sz, tip_x - 6, tip_y - 12, tip_x - 12, tip_y - 12, tip_x, tip_y, tip_x + 12, tip_y - 12, tip_x + 6, tip_y - 12, tip_x + 6, tip_y - sz]
+                tip_y = box_y - 4
+                if is_triangle:
+                    pts = [tip_x - hw // 2, tip_y - total_l, tip_x + hw // 2, tip_y - total_l, tip_x, tip_y]
+                elif is_slim:
+                    head_h = 10
+                    hb = tip_y - head_h
+                    top_y = tip_y - total_l
+                    pts = [tip_x - stem_w // 2, top_y, tip_x + stem_w // 2, top_y, tip_x + stem_w // 2, hb, tip_x + hw // 2, hb, tip_x, tip_y, tip_x - hw // 2, hb, tip_x - stem_w // 2, hb]
+                else: # clasic
+                    pts = [tip_x - hw // 2, tip_y - total_l, tip_x + hw // 2, tip_y - total_l, tip_x, tip_y]
+
+            elif arrow_dir == "up":
+                tip_x = box_x + (box_w // 2)
+                tip_y = box_y + box_h + 4
+                if is_triangle or not is_slim:
+                    pts = [tip_x, tip_y, tip_x + hw // 2, tip_y + total_l, tip_x - hw // 2, tip_y + total_l]
+                else:
+                    head_h = 10
+                    hb = tip_y + head_h
+                    bot_y = tip_y + total_l
+                    pts = [tip_x, tip_y, tip_x + hw // 2, hb, tip_x + stem_w // 2, hb, tip_x + stem_w // 2, bot_y, tip_x - stem_w // 2, bot_y, tip_x - stem_w // 2, hb, tip_x - hw // 2, hb]
+
             elif arrow_dir == "left":
-                tip_x = box_x + box_w + 12
+                tip_x = box_x + box_w + 4
                 tip_y = box_y + (box_h // 2)
-                pts = [tip_x + sz, tip_y - 6, tip_x + 12, tip_y - 6, tip_x + 12, tip_y - 12, tip_x, tip_y, tip_x + 12, tip_y + 12, tip_x + 12, tip_y + 6, tip_x + sz, tip_y + 6]
-            else: # up
-                tip_x = box_x + (box_w // 2)
-                tip_y = box_y + box_h + 12
-                pts = [tip_x - 6, tip_y + sz, tip_x - 6, tip_y + 12, tip_x - 12, tip_y + 12, tip_x, tip_y, tip_x + 12, tip_y + 12, tip_x + 6, tip_y + 12, tip_x + 6, tip_y + sz]
+                if is_triangle or not is_slim:
+                    pts = [tip_x + total_l, tip_y - hw // 2, tip_x, tip_y, tip_x + total_l, tip_y + hw // 2]
+                else:
+                    head_w = 10
+                    hb = tip_x + head_w
+                    right_x = tip_x + total_l
+                    pts = [right_x, tip_y - stem_w // 2, hb, tip_y - stem_w // 2, hb, tip_y - hw // 2, tip_x, tip_y, hb, tip_y + hw // 2, hb, tip_y + stem_w // 2, right_x, tip_y + stem_w // 2]
 
-            self.preview_canvas.create_polygon(pts, fill=col, outline="#8B0000", width=1)
+            else: # right
+                tip_x = box_x - 4
+                tip_y = box_y + (box_h // 2)
+                if is_triangle or not is_slim:
+                    pts = [tip_x - total_l, tip_y - hw // 2, tip_x, tip_y, tip_x - total_l, tip_y + hw // 2]
+                else:
+                    head_w = 10
+                    hb = tip_x - head_w
+                    left_x = tip_x - total_l
+                    pts = [left_x, tip_y - stem_w // 2, hb, tip_y - stem_w // 2, hb, tip_y - hw // 2, tip_x, tip_y, hb, tip_y + hw // 2, hb, tip_y + stem_w // 2, left_x, tip_y + stem_w // 2]
 
-        # 3. Badge Text (fără suprapunere peste săgeată)
+            self.preview_canvas.create_polygon(pts, fill=col, outline="#660000" if col != "#EB780A" else "#8C4600", width=1)
+
+        # 3. Badge Text
         if self.var_badge.get():
             badge_text = self.ent_badge_text.get() or "⚠️ ATENȚIE!"
             bx = box_x
-            if arrow_dir == "down" and arrow_sz > 0:
-                by = box_y - arrow_sz - 30
+            arrow_dir = self.var_arrow_dir.get()
+            if arrow_dir == "down" and self.var_arrow.get():
+                by = box_y - 28 - 24
             else:
                 by = box_y - 26
 
@@ -537,57 +880,242 @@ class RuleEditorDialog:
             self.preview_canvas.create_rectangle(bx, by, bx + approx_w, by + 20, fill="#D90429", outline="#FFFFFF", width=1)
             self.preview_canvas.create_text(bx + (approx_w // 2), by + 10, text=badge_text, fill="#FFFFFF", font=FONT_SMALL)
 
+    def _get_current_rule_snapshot(self) -> Dict[str, Any]:
+        """Extrage o copie a stării curente din formular pentru testare sau salvare."""
+        snap = copy.deepcopy(self.rule)
+        snap["name"] = self.ent_name.get().strip() or "Regulă Nouă"
+        snap["enabled"] = self.var_enabled.get()
+
+        if "trigger" not in snap:
+            snap["trigger"] = {}
+        snap["trigger"]["window_title_pattern"] = self.ent_win_title.get().strip() or "*"
+        snap["trigger"]["url_pattern"] = self.ent_url.get().strip()
+        
+        proc_val = self.var_proc.get().strip()
+        if "browser" in proc_val.lower():
+            snap["trigger"]["process_name"] = "browser"
+        elif "chrome.exe" in proc_val.lower():
+            snap["trigger"]["process_name"] = "chrome.exe"
+        elif "msedge.exe" in proc_val.lower():
+            snap["trigger"]["process_name"] = "msedge.exe"
+        elif "orice proces" in proc_val.lower():
+            snap["trigger"]["process_name"] = ""
+        else:
+            snap["trigger"]["process_name"] = proc_val.split()[0].lower()
+
+        snap["trigger"]["text_condition"] = self.var_cond.get()
+        snap["trigger"]["search_text"] = self.ent_search_text.get().strip()
+
+        # Preluare criterii dinamice adăugate prin butonul [+]
+        additional_list = self._get_all_criteria_values()
+        snap["trigger"]["additional_criteria"] = additional_list
+        raw_logic = self.var_criteria_logic.get() if hasattr(self, "var_criteria_logic") else "OR"
+        snap["trigger"]["criteria_logic"] = "AND" if "AND" in raw_logic else "OR"
+
+        if "visual_cue" not in snap:
+            snap["visual_cue"] = {}
+        snap["visual_cue"]["box_enabled"] = self.var_box.get()
+        snap["visual_cue"]["border_color"] = self.border_color
+        snap["visual_cue"]["border_width"] = self.var_border_w.get()
+
+        scope_map_rev = {
+            "Zonă Extinsă (W x H din selecție)": "custom_region",
+            "Fix pe Textul Detectat (Strâns)": "exact_text",
+            "Tot Rândul Orizontal (Full Row)": "full_row"
+        }
+        snap["visual_cue"]["box_scope"] = scope_map_rev.get(self.var_box_scope.get(), "custom_region") if hasattr(self, "var_box_scope") else "custom_region"
+
+        snap["visual_cue"]["arrow_enabled"] = self.var_arrow.get()
+        snap["visual_cue"]["arrow_direction"] = self.var_arrow_dir.get()
+        snap["visual_cue"]["arrow_color"] = self.arrow_color
+
+        st_map = {"Subțire & Fină": "slim", "Triunghi Zvelt": "triangle", "Clasică (Standard)": "classic"}
+        snap["visual_cue"]["arrow_style"] = st_map.get(self.var_arrow_style.get(), "slim")
+        snap["visual_cue"]["arrow_width"] = self.var_arrow_w.get()
+        snap["visual_cue"]["arrow_size"] = 22 if snap["visual_cue"]["arrow_style"] != "classic" else 36
+
+        snap["visual_cue"]["badge_enabled"] = self.var_badge.get()
+        snap["visual_cue"]["badge_text"] = self.ent_badge_text.get().strip()
+        snap["visual_cue"]["pulse_animation"] = self.var_pulse.get()
+
+        try:
+            dur = int(self.var_duration.get().strip() or 0)
+        except ValueError:
+            dur = 0
+        snap["visual_cue"]["duration_sec"] = dur
+
+        if "region" not in snap:
+            snap["region"] = {}
+        snap["region"]["mode"] = self.var_mode.get()
+        if hasattr(self, "var_region_w"):
+            snap["region"]["width"] = self.var_region_w.get()
+        if hasattr(self, "var_region_h"):
+            snap["region"]["height"] = self.var_region_h.get()
+
+        if self.var_has_steps.get() and self.steps:
+            snap["steps"] = copy.deepcopy(self.steps)
+        else:
+            snap["steps"] = []
+
+        return snap
+
+    def _test_current_rule(self) -> None:
+        """Testează reperul direct pe ecran din fereastra de editare."""
+        if not self.on_test_cue:
+            messagebox.showinfo("FocusPilot", "Funcția de testare nu este disponibilă direct.", parent=self.dialog)
+            return
+
+        snapshot = self._get_current_rule_snapshot()
+        self.on_test_cue(snapshot)
+
+    def _run_live_diagnostic(self) -> None:
+        """Verifică de ce regula se declanșează sau nu în direct pe ecran și oferă diagnostic exact."""
+        import win32gui, win32process, ctypes, os
+        from core.rule_engine import RuleEngine
+
+        rule_data = self._get_current_rule_snapshot()
+        trigger = rule_data.get("trigger", {})
+        win_pattern = trigger.get("window_title_pattern", "*")
+        proc_pattern = trigger.get("process_name", "")
+        criteria_list, criteria_logic = RuleEngine.extract_criteria_list(trigger)
+
+        def get_proc_name_from_hwnd(h):
+            try:
+                _, pid = win32process.GetWindowThreadProcessId(h)
+                hp = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+                if hp:
+                    buf = ctypes.create_unicode_buffer(1024)
+                    sz = ctypes.c_ulong(1024)
+                    ctypes.windll.kernel32.QueryFullProcessImageNameW(hp, 0, buf, ctypes.byref(sz))
+                    ctypes.windll.kernel32.CloseHandle(hp)
+                    return os.path.basename(buf.value).lower()
+            except Exception:
+                pass
+            return ""
+
+        # Găsim ferestrele candidat mari din sistem (excludem ferestre mici, Picture-in-picture, popup-uri)
+        candidate_windows = []
+        def enum_candidate(h, _):
+            if win32gui.IsWindowVisible(h):
+                t = win32gui.GetWindowText(h)
+                if t and len(t.strip()) > 1:
+                    r = win32gui.GetWindowRect(h)
+                    w, h_sz = r[2] - r[0], r[3] - r[1]
+                    if w > 400 and h_sz > 250:
+                        p = get_proc_name_from_hwnd(h)
+                        if p and p not in ["focuspilot.exe", "python.exe", "pythonw.exe", "textinputhost.exe", "explorer.exe"]:
+                            if "picture in picture" not in t.lower() and "chrome legacy" not in t.lower():
+                                candidate_windows.append((h, t, p, w * h_sz))
+            return True
+        win32gui.EnumWindows(enum_candidate, None)
+
+        def score_cand(cand):
+            h, t, p, area = cand
+            sc = 0
+            if win_pattern and win_pattern != "*" and RuleEngine.match_string(win_pattern, t):
+                sc += 1000
+            if proc_pattern and proc_pattern != "orice proces":
+                if proc_pattern in ["browser", "chrome.exe", "msedge.exe"] and p in ["chrome.exe", "msedge.exe"]:
+                    sc += 200
+                elif RuleEngine.match_string(proc_pattern, p):
+                    sc += 200
+            sc += min(50, area // 50000)
+            return sc
+
+        candidate_windows.sort(key=score_cand, reverse=True)
+
+        diag = ["🔍 DIAGNOSTICARE LIVE FOCUSPILOT\n" + "="*45]
+        if not candidate_windows:
+            diag.append("❌ Nu s-a găsit nicio fereastră de aplicație mare deschisă.")
+            messagebox.showinfo("Diagnosticare Live", "\n".join(diag), parent=self.dialog)
+            return
+
+        selected_h, selected_t, selected_p, _ = candidate_windows[0]
+
+        diag.append(f"• Fereastră analizată: \"{selected_t[:50]}\"")
+        diag.append(f"• Executabil detectat: {selected_p} (HWND {selected_h})\n")
+
+        # 1. Filtru Proces
+        proc_ok = True
+        proc_cfg = proc_pattern.strip().lower()
+        if proc_cfg and proc_cfg not in ["*", "orice proces"]:
+            if proc_cfg in ["browser", "msedge.exe", "chrome.exe", "firefox.exe"]:
+                proc_ok = selected_p in ["msedge.exe", "chrome.exe", "firefox.exe"]
+            else:
+                proc_ok = RuleEngine.match_string(proc_cfg, selected_p, case_sensitive=False)
+        diag.append(f"{'✅' if proc_ok else '❌'} 1. Filtru Aplicație: {'CORECT' if proc_ok else 'NEPOTRIVIT'} (Configurat: '{proc_pattern or '*'}', Detectat: '{selected_p}')")
+
+        # 2. Filtru Titlu
+        title_ok = True
+        if win_pattern and win_pattern != "*":
+            norm = win_pattern if ("*" in win_pattern or "?" in win_pattern) else f"*{win_pattern}*"
+            title_ok = RuleEngine.match_string(norm, selected_t, case_sensitive=False)
+        diag.append(f"{'✅' if title_ok else '❌'} 2. Filtru Titlu: {'CORECT' if title_ok else 'NEPOTRIVIT'} (Configurat: '{win_pattern}', Titlu real: '{selected_t[:35]}')")
+
+        # 3. Criterii Text & UIA
+        diag.append(f"\n3. Evaluare Criterii (Logică: {criteria_logic}):")
+        crit_results = []
+        for c in criteria_list:
+            found_t = RuleEngine.match_string(c, selected_t, case_sensitive=False)
+            geo = RuleEngine.find_uia_control_geometry(selected_h, c)
+            if not geo and ("'" in c or '"' in c):
+                geo = RuleEngine.find_uia_control_geometry(selected_h, c.replace("'", "").replace('"', ""))
+            crit_ok = bool(found_t or geo)
+            desc = "Găsit în titlu" if found_t else (f"Găsit pe ecran la Y={geo[1]}px" if geo else "Negăsit pe ecran")
+            crit_results.append((c, crit_ok, desc))
+            diag.append(f"   {'✅' if crit_ok else '❌'} • '{c[:35]}': {desc}")
+
+        if criteria_logic == "AND":
+            txt_ok = all(r[1] for r in crit_results) if crit_results else True
+        else: # OR
+            txt_ok = any(r[1] for r in crit_results) if crit_results else True
+
+        # Verificare suplimentară șablon imagine dacă nu s-a găsit prin UIA
+        found_snip = False
+        tmpl = rule_data.get("region", {}).get("template_image", "")
+        if tmpl and not txt_ok:
+            import pyautogui
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            tmpl_p = os.path.join(base_dir, tmpl) if not os.path.isabs(tmpl) else tmpl
+            if os.path.exists(tmpl_p):
+                try:
+                    loc = pyautogui.locateOnScreen(tmpl_p, confidence=0.70)
+                    if loc:
+                        found_snip = True
+                        txt_ok = True
+                except Exception:
+                    pass
+            diag.append(f"   {'✅' if found_snip else 'ℹ️'} • Șablon vizual (.png): {'Găsit pe ecran' if found_snip else 'Negăsit'}")
+
+        # Informație acoperire chenar
+        box_scope_name = self.var_box_scope.get() if hasattr(self, "var_box_scope") else "Zonă Extinsă"
+        box_w = self.var_region_w.get() if hasattr(self, "var_region_w") else 350
+        box_h = self.var_region_h.get() if hasattr(self, "var_region_h") else 60
+        diag.append(f"\n4. Dimensiuni Chenar: {box_scope_name} -> {box_w}x{box_h} px")
+
+        diag.append("\n" + "-"*45)
+        if proc_ok and title_ok and txt_ok:
+            diag.append("🎉 REZULTAT: REGULA ESTE 100% VALIDĂ ȘI SE DECLANȘEAZĂ!")
+        else:
+            diag.append("⚠️ CE TREBUIE SĂ AJUSTAȚI:")
+            if not proc_ok:
+                diag.append(f"• Setați 'Aplicație / Browser' pe: '{selected_p}' sau 'browser'")
+            if not title_ok:
+                diag.append(f"• Setați 'Titlu Fereastră' pe: *{selected_t[:20]}* sau '*'")
+            if not txt_ok:
+                if criteria_logic == "AND":
+                    diag.append("• Nu toate criteriile au fost găsite simultan pe ecran. Schimbați pe 'OR' dacă e suficient oricare dintre ele.")
+                else:
+                    diag.append("• Niciunul dintre criteriile de căutare nu a fost găsit pe ecran. Verificați dacă textul este vizibil în pagină.")
+
+        messagebox.showinfo("Diagnosticare Live FocusPilot", "\n".join(diag), parent=self.dialog)
+
     def _save_and_close(self) -> None:
         name = self.ent_name.get().strip()
         if not name:
             messagebox.showwarning("Atenție", "Introduceți un nume pentru regulă.", parent=self.dialog)
             return
 
-        self.rule["name"] = name
-        self.rule["enabled"] = self.var_enabled.get()
-
-        if "trigger" not in self.rule:
-            self.rule["trigger"] = {}
-        self.rule["trigger"]["window_title_pattern"] = self.ent_win_title.get().strip() or "*"
-        self.rule["trigger"]["url_pattern"] = self.ent_url.get().strip()
-        
-        proc_val = self.var_proc.get().strip()
-        # Normalizăm valoarea din dropdown
-        if "browser" in proc_val.lower():
-            self.rule["trigger"]["process_name"] = "browser"
-        elif "chrome.exe" in proc_val.lower():
-            self.rule["trigger"]["process_name"] = "chrome.exe"
-        elif "msedge.exe" in proc_val.lower():
-            self.rule["trigger"]["process_name"] = "msedge.exe"
-        elif "orice proces" in proc_val.lower():
-            self.rule["trigger"]["process_name"] = ""
-        else:
-            self.rule["trigger"]["process_name"] = proc_val.split()[0].lower()
-
-        self.rule["trigger"]["text_condition"] = self.var_cond.get()
-        self.rule["trigger"]["search_text"] = self.ent_search_text.get().strip()
-
-        if "visual_cue" not in self.rule:
-            self.rule["visual_cue"] = {}
-        self.rule["visual_cue"]["box_enabled"] = self.var_box.get()
-        self.rule["visual_cue"]["border_color"] = self.border_color
-        self.rule["visual_cue"]["border_width"] = self.var_border_w.get()
-        self.rule["visual_cue"]["arrow_enabled"] = self.var_arrow.get()
-        self.rule["visual_cue"]["arrow_direction"] = self.var_arrow_dir.get()
-        self.rule["visual_cue"]["arrow_color"] = self.arrow_color
-        self.rule["visual_cue"]["badge_enabled"] = self.var_badge.get()
-        self.rule["visual_cue"]["badge_text"] = self.ent_badge_text.get().strip()
-        self.rule["visual_cue"]["pulse_animation"] = self.var_pulse.get()
-
-        try:
-            dur = int(self.var_duration.get().strip() or 0)
-        except ValueError:
-            dur = 0
-        self.rule["visual_cue"]["duration_sec"] = dur
-
-        if "region" not in self.rule:
-            self.rule["region"] = {}
-        self.rule["region"]["mode"] = self.var_mode.get()
-
-        self.on_save(self.rule)
+        final_rule = self._get_current_rule_snapshot()
+        self.on_save(final_rule)
         self.dialog.destroy()

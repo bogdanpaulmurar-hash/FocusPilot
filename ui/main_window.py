@@ -183,11 +183,11 @@ class MainWindow:
             ).pack(pady=(4, 0))
             return
 
-        for rule in rules:
-            self._render_rule_card(rule)
+        for index, rule in enumerate(rules):
+            self._render_rule_card(rule, index=index, total=len(rules))
 
-    def _render_rule_card(self, rule: Dict[str, Any]) -> None:
-        """Afișează o regulă ca un card elegant cu detalii și acțiuni rapide."""
+    def _render_rule_card(self, rule: Dict[str, Any], index: int = 0, total: int = 1) -> None:
+        """Afișează o regulă ca un card elegant cu detalii, ordonare secvențială și acțiuni rapide."""
         rule_id = rule.get("id", "")
         is_enabled = rule.get("enabled", True)
 
@@ -197,10 +197,34 @@ class MainWindow:
         # Dublu-clic pe card deschide direct dialogul de editare
         card.bind("<Double-Button-1>", lambda e, r=rule: self._edit_rule(r))
 
-        # Rândul 1: Toggle activ + Nume + Butoane acțiune
+        # Rândul 1: Index Ordine + Toggle activ + Nume + Butoane acțiune + Butoane Ordine ▲/▼
         top_row = tk.Frame(card, bg=self.theme["bg_card"])
         top_row.pack(fill="x")
         top_row.bind("<Double-Button-1>", lambda e, r=rule: self._edit_rule(r))
+
+        # Badge număr de ordine în succesiune: [#1], [#2]
+        lbl_order = tk.Label(
+            top_row, text=f"#{index + 1}", font=FONT_SMALL, bg="#004B52", fg="#FFFFFF",
+            padx=6, pady=2
+        )
+        lbl_order.pack(side="left", padx=(0, 6))
+
+        # Butoane reordonare sus / jos
+        btn_up = tk.Button(
+            top_row, text="▲", font=("Segoe UI", 8, "bold"), bg=self.theme["bg_hover"],
+            fg=self.theme["fg_primary"], relief="flat", padx=4, pady=1, cursor="hand2",
+            state="normal" if index > 0 else "disabled",
+            command=lambda rid=rule_id: self._move_rule_up(rid)
+        )
+        btn_up.pack(side="left", padx=(0, 2))
+
+        btn_down = tk.Button(
+            top_row, text="▼", font=("Segoe UI", 8, "bold"), bg=self.theme["bg_hover"],
+            fg=self.theme["fg_primary"], relief="flat", padx=4, pady=1, cursor="hand2",
+            state="normal" if index < total - 1 else "disabled",
+            command=lambda rid=rule_id: self._move_rule_down(rid)
+        )
+        btn_down.pack(side="left", padx=(0, 8))
 
         # Badge status vizual clar: [ACTIV] sau [INACTIV]
         status_bg = self.theme["green"] if is_enabled else self.theme["bg_hover"]
@@ -276,18 +300,37 @@ class MainWindow:
         cue_row = tk.Frame(card, bg=self.theme["bg_card"])
         cue_row.pack(fill="x", pady=(6, 0))
 
+        # Dacă există pași secvențiali
+        steps = rule.get("steps", [])
+        if steps:
+            self._render_badge(cue_row, f"📦 {len(steps)} Etape Secvențiale", "#00646E", "#FFFFFF")
+
         if cue.get("box_enabled", True):
             self._render_badge(cue_row, f"Chenar {cue.get('border_color', '#FF0000')} ({cue.get('border_width', 3)}px)", self.theme["bg_input"], cue.get('border_color', '#FF0000'))
 
         if cue.get("arrow_enabled", True):
-            dir_sym = {"right": "➔", "left": "⬅", "down": "⬇", "up": "⬆"}.get(cue.get("arrow_direction", "right"), "➔")
-            self._render_badge(cue_row, f"Săgeată {dir_sym}", self.theme["bg_input"], cue.get("arrow_color", "#FF0000"))
+            dir_sym = {"right": "➔", "left": "⬅", "down": "⬇", "up": "⬆"}.get(cue.get("arrow_direction", "down"), "⬇")
+            arr_st = "Subțire" if cue.get("arrow_style") != "classic" else "Standard"
+            self._render_badge(cue_row, f"Săgeată {arr_st} {dir_sym}", self.theme["bg_input"], cue.get("arrow_color", "#FF0000"))
 
         if cue.get("badge_enabled", True):
             self._render_badge(cue_row, cue.get("badge_text", "⚠️ ATENȚIE"), cue.get("badge_bg", "#D90429"), "#FFFFFF")
 
         dur = cue.get("duration_sec", 0)
         dur_txt = f"⏱️ {dur}s" if dur > 0 else "⏱️ Permanent"
+        self._render_badge(cue_row, dur_txt, self.theme["bg_input"], self.theme["fg_secondary"])
+
+    def _move_rule_up(self, rule_id: str) -> None:
+        """Mută o regulă mai sus în ordinea de execuție."""
+        if self.cfg.move_rule_up(rule_id):
+            self.on_rules_changed()
+            self.refresh_rules_list()
+
+    def _move_rule_down(self, rule_id: str) -> None:
+        """Mută o regulă mai jos în ordinea de execuție."""
+        if self.cfg.move_rule_down(rule_id):
+            self.on_rules_changed()
+            self.refresh_rules_list()
         self._render_badge(cue_row, dur_txt, self.theme["bg_input"], self.theme["fg_secondary"])
 
     def _render_badge(self, parent: tk.Widget, text: str, bg: str, fg: str) -> None:
@@ -300,10 +343,10 @@ class MainWindow:
         self.refresh_rules_list()
 
     def _add_rule(self) -> None:
-        RuleEditorDialog(self.root, self.theme_name, None, self._on_rule_saved)
+        RuleEditorDialog(self.root, self.theme_name, None, self._on_rule_saved, on_test_cue=self.on_test_cue)
 
     def _edit_rule(self, rule: Dict[str, Any]) -> None:
-        RuleEditorDialog(self.root, self.theme_name, rule, self._on_rule_saved)
+        RuleEditorDialog(self.root, self.theme_name, rule, self._on_rule_saved, on_test_cue=self.on_test_cue)
 
     def _on_rule_saved(self, rule: Dict[str, Any]) -> None:
         rule_id = rule.get("id")

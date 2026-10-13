@@ -244,3 +244,27 @@ class ConfigManager:
             if deleted and auto_save:
                 self._save_unlocked()
             return deleted
+
+    def move_rule_up(self, rule_id: str, auto_save: bool = True) -> bool:
+        """Mută o regulă cu o poziție mai sus în ordinea de execuție."""
+        with self._lock:
+            rules = self._data.get("rules", [])
+            for i, r in enumerate(rules):
+                if r.get("id") == rule_id and i > 0:
+                    rules[i], rules[i - 1] = rules[i - 1], rules[i]
+                    if auto_save:
+                        self._save_unlocked()
+                    return True
+            return False
+
+    def move_rule_down(self, rule_id: str, auto_save: bool = True) -> bool:
+        """Mută o regulă cu o poziție mai jos în ordinea de execuție."""
+        with self._lock:
+            rules = self._data.get("rules", [])
+            for i, r in enumerate(rules):
+                if r.get("id") == rule_id and i < len(rules) - 1:
+                    rules[i], rules[i + 1] = rules[i + 1], rules[i]
+                    if auto_save:
+                        self._save_unlocked()
+                    return True
+            return False

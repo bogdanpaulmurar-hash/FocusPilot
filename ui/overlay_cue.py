@@ -182,47 +182,37 @@ class MultiScreenOverlay:
         if visual.get("arrow_enabled", True):
             arr_dir = visual.get("arrow_direction", "up")
             arr_col = visual.get("arrow_color", "#FF0000")
-            arr_sz = int(visual.get("arrow_size", 36))
-            anim_offset = int(math.sin(self._pulse_phase * 2) * 5)
+            arr_style = visual.get("arrow_style", "slim")  # "slim", "triangle", "classic"
+            arr_w = int(visual.get("arrow_width", 14 if arr_style != "classic" else 32))
+            arr_sz = int(visual.get("arrow_size", 22 if arr_style != "classic" else 36))
+            anim_offset = int(math.sin(self._pulse_phase * 2) * 4)
 
-            if arr_dir == "up":
-                aw = arr_sz + 8
-                ah = arr_sz + 8
+            # Calculăm dimensiunile ferestrei canvas
+            if arr_dir in ["up", "down"]:
+                aw = max(18, arr_w + 6)
+                ah = max(18, arr_sz + 6)
                 ax = gx + (gw // 2) - (aw // 2)
-                ay = gy + gh + 4 + anim_offset
-                pts = [aw // 2, 4, 4, ah - 4, (aw // 2) - 4, ah - 12, (aw // 2) - 4, ah - 2, (aw // 2) + 4, ah - 2, (aw // 2) + 4, ah - 12, aw - 4, ah - 4]
-            elif arr_dir == "down":
-                aw = arr_sz + 8
-                ah = arr_sz + 8
-                ax = gx + (gw // 2) - (aw // 2)
-                ay = gy - ah - 4 - anim_offset
-                pts = [4, 4, (aw // 2) - 4, 12, (aw // 2) - 4, 2, (aw // 2) + 4, 2, (aw // 2) + 4, 12, aw - 4, 4, aw // 2, ah - 4]
-            elif arr_dir == "right":
-                aw = arr_sz + 8
-                ah = arr_sz + 8
-                ax = gx - aw - 4 - anim_offset
+                if arr_dir == "up":
+                    ay = gy + gh + 4 + anim_offset
+                else: # down
+                    ay = gy - ah - 4 - anim_offset
+            else: # left, right
+                aw = max(18, arr_sz + 6)
+                ah = max(18, arr_w + 6)
+                if arr_dir == "right":
+                    ax = gx - aw - 4 - anim_offset
+                else: # left
+                    ax = gx + gw + 4 + anim_offset
                 ay = gy + (gh // 2) - (ah // 2)
-                pts = [4, 4, ah // 2, 4, ah - 4, aw // 2, ah // 2, aw - 4, 4, aw - 4]
-            else: # left
-                aw = arr_sz + 8
-                ah = arr_sz + 8
-                ax = gx + gw + 4 + anim_offset
-                ay = gy + (gh // 2) - (ah // 2)
-                pts = [aw - 4, 4, aw - 4, ah - 4, 4, ah // 2]
 
             self.arrow_win.geometry(f"{aw}x{ah}+{ax}+{ay}")
             self.arrow_canvas.delete("all")
-            # Desenăm conturul ascuțit al săgeții
-            if arr_dir == "up":
-                triangle = [aw // 2, 2, 4, ah - 4, aw - 4, ah - 4]
-            elif arr_dir == "down":
-                triangle = [4, 4, aw - 4, 4, aw // 2, ah - 2]
-            elif arr_dir == "right":
-                triangle = [4, 4, aw - 2, ah // 2, 4, ah - 4]
-            else: # left
-                triangle = [aw - 4, 4, aw - 4, ah - 4, 2, ah // 2]
 
-            self.arrow_canvas.create_polygon(triangle, fill=arr_col, outline="#8B0000", width=2)
+            # Generăm punctele geometrice precise în funcție de direcție și stil
+            pts = self._calculate_arrow_polygon(arr_dir, arr_style, arr_w, arr_sz, aw, ah)
+            outline_col = "#660000" if arr_col != "#EB780A" else "#8C4600"
+            self.arrow_canvas.create_polygon(pts, fill=arr_col, outline=outline_col, width=1)
+
             self.arrow_win.deiconify()
             self.arrow_win.lift()
             self.arrow_win.attributes("-topmost", True)
@@ -233,6 +223,71 @@ class MultiScreenOverlay:
 
         self._is_visible = True
         logger.info(f"[OVERLAY FRAME-BORDER] Bare opace afișate cu succes la coordonatele ({gx}, {gy}, {gw}, {gh}).")
+
+    def _calculate_arrow_polygon(self, direction: str, style: str, width: int, length: int, aw: int, ah: int) -> List[int]:
+        """Calculează coordonatele poligonului pentru săgeată subțire sau clasică."""
+        cx = aw // 2
+        cy = ah // 2
+        hw = max(6, width)
+        total_l = max(10, length)
+        stem_w = max(2, min(5, hw // 3))
+
+        if style == "triangle" or style == "classic":
+            if direction == "down":
+                return [cx - hw // 2, 4, cx + hw // 2, 4, cx, ah - 3]
+            elif direction == "up":
+                return [cx, 3, cx + hw // 2, ah - 4, cx - hw // 2, ah - 4]
+            elif direction == "right":
+                return [4, cy - hw // 2, aw - 3, cy, 4, cy + hw // 2]
+            else: # left
+                return [aw - 4, cy - hw // 2, 3, cy, aw - 4, cy + hw // 2]
+        else:
+            # Stilul "slim" (Săgeată subțire, elegantă, cu tijă fină)
+            head_h = max(7, min(14, int(total_l * 0.55)))
+            if direction == "down":
+                hb = ah - head_h
+                return [
+                    cx - stem_w // 2, 3,
+                    cx + stem_w // 2, 3,
+                    cx + stem_w // 2, hb,
+                    cx + hw // 2, hb,
+                    cx, ah - 3,
+                    cx - hw // 2, hb,
+                    cx - stem_w // 2, hb
+                ]
+            elif direction == "up":
+                hb = 3 + head_h
+                return [
+                    cx, 3,
+                    cx + hw // 2, hb,
+                    cx + stem_w // 2, hb,
+                    cx + stem_w // 2, ah - 3,
+                    cx - stem_w // 2, ah - 3,
+                    cx - stem_w // 2, hb,
+                    cx - hw // 2, hb
+                ]
+            elif direction == "right":
+                hb = aw - head_h
+                return [
+                    3, cy - stem_w // 2,
+                    hb, cy - stem_w // 2,
+                    hb, cy - hw // 2,
+                    aw - 3, cy,
+                    hb, cy + hw // 2,
+                    hb, cy + stem_w // 2,
+                    3, cy + stem_w // 2
+                ]
+            else: # left
+                hb = 3 + head_h
+                return [
+                    aw - 3, cy - stem_w // 2,
+                    hb, cy - stem_w // 2,
+                    hb, cy - hw // 2,
+                    3, cy,
+                    hb, cy + hw // 2,
+                    hb, cy + stem_w // 2,
+                    aw - 3, cy + stem_w // 2
+                ]
 
     def _start_pulse_loop(self) -> None:
         self._pulse_phase += 0.35

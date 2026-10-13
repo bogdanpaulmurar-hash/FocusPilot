@@ -52,7 +52,8 @@ import datetime
 sys.excepthook = handle_uncaught_exception
 
 from core.config_manager import ConfigManager
-from core.monitor_engine import MonitorEngine
+from core.rule_engine import RuleEngine
+from core.monitor_engine import MonitorEngine, get_foreground_window_info, get_virtual_screen_bounds
 from core.keep_awake import enable_keep_awake, disable_keep_awake
 from ui.overlay_cue import MultiScreenOverlay
 from ui.main_window import MainWindow
