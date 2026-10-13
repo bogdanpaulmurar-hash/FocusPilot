@@ -6,6 +6,7 @@ __pycache__/
 # Logs
 *.log
 focuspilot_log.txt
+chat_esuat.txt
 
 # Temporary screenshots
 assets/rules/snip_*.png
