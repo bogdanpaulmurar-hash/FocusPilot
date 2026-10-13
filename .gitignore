@@ -1,26 +1,23 @@
-## Python
+# Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
 *.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
-venv/
-.venv/
-env/
 
-## Logs & Temp
+# Logs
 *.log
-*.tmp
 focuspilot_log.txt
-logs/
 
-## OS & Editors
-desktop.ini
-Thumbs.db
-.DS_Store
+# Temporary screenshots
+assets/rules/snip_*.png
+
+# IDE
 .vscode/
 .idea/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Python virtual env
+venv/
+.venv/
