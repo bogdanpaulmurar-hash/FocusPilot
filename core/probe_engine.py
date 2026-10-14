@@ -490,6 +490,81 @@ def uses_conditions(rule: Dict[str, Any]) -> bool:
     return bool(rule.get("probes")) and bool(rule.get("conditions"))
 
 
+def validate_rule_fields(fields: Dict[str, Any]) -> Optional[str]:
+    """
+    Verifică o configurație de câmpuri, condiții și marcaje.
+
+    Întoarce un mesaj de eroare lizibil, sau None dacă totul e coerent. Se
+    apelează ÎNAINTE de salvare: o regulă cu o referință greșită s-ar salva
+    fără reclamații și apoi pur și simplu nu s-ar declanșa, iar utilizatorul nu
+    ar avea de unde să afle de ce.
+    """
+    probes = fields.get("probes") or []
+    conditions = fields.get("conditions") or []
+    marks = fields.get("marks") or []
+
+    if not probes and not conditions and not marks:
+        return None          # modelul nu e folosit pentru această regulă
+
+    names = [str(p.get("name", "") or "").strip() for p in probes]
+    names = [n for n in names if n]
+    if not names:
+        return "Nu există niciun câmp valid. Fiecare câmp are nevoie de un nume."
+
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    if duplicates:
+        return (f"Două câmpuri au același nume: {', '.join(duplicates)}. "
+                "Numele sunt folosite ca referință, deci trebuie unice.")
+
+    for probe in probes:
+        locator = probe.get("locator") or {}
+        kind = str(locator.get("kind", "") or "")
+        label = probe.get("name", "?")
+        if kind in ("text_near", "text_self") and not str(locator.get("text", "")).strip():
+            return (f"Câmpul «{label}» se localizează după o etichetă, dar "
+                    "eticheta nu e completată.")
+        if kind in ("screen_point", "screen_region"):
+            if locator.get("x") in (None, "") or locator.get("y") in (None, ""):
+                return (f"Câmpul «{label}» se localizează prin coordonate, dar "
+                        "acestea lipsesc. Folosiți «Alege de pe Ecran».")
+
+    if not conditions:
+        return ("Nu există nicio condiție. Fără condiții regula nu se poate "
+                "declanșa.")
+
+    for condition in conditions:
+        probe_name = str(condition.get("probe", "") or "")
+        if probe_name not in names:
+            return (f"Condiția se referă la câmpul «{probe_name}», care nu "
+                    "există.")
+        operator = str(condition.get("operator", "") or "")
+        if operator not in OPERATORS:
+            return f"Operator necunoscut: «{operator}»."
+        if OPERATORS[operator][1] and not str(condition.get("value", "") or "").strip():
+            return (f"Condiția «{probe_name} {OPERATORS[operator][0]}» are nevoie "
+                    "de o valoare de comparat.")
+        if operator == "between":
+            parts = [p for p in re.split(r"[;,]", str(condition.get("value", "")))
+                     if p.strip()]
+            if len(parts) != 2:
+                return (f"Condiția «{probe_name} este între» are nevoie de două "
+                        "valori separate prin punct și virgulă, de exemplu 10;20.")
+
+    if not marks:
+        return ("Nu există niciun marcaj. Condițiile s-ar verifica, dar nimic nu "
+                "s-ar desena pe ecran.")
+
+    for mark in marks:
+        target = str(mark.get("target", "") or "")
+        if target and target not in names:
+            return f"Marcajul indică câmpul «{target}», care nu există."
+        shape = str(mark.get("shape", "box") or "box")
+        if shape not in SHAPES:
+            return f"Formă de marcaj necunoscută: «{shape}»."
+
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Marcaje
 # ─────────────────────────────────────────────────────────────────────────────

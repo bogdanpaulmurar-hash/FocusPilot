@@ -1,0 +1,278 @@
+{
+  "rules": [
+    {
+      "id": "exemplu_text_simplu",
+      "name": "A. Categorie de schimbat în TIMA",
+      "enabled": true,
+      "trigger": {
+        "process_name": "browser",
+        "window_title_pattern": "*TIMA*",
+        "url_pattern": "*",
+        "text_condition": "contains",
+        "search_text": "Please change category",
+        "case_sensitive": false
+      },
+      "visual_cue": {
+        "box_enabled": true,
+        "box_scope": "exact_text",
+        "border_color": "#E60000",
+        "border_width": 3,
+        "arrow_enabled": true,
+        "arrow_direction": "right",
+        "arrow_color": "#E60000",
+        "arrow_count": 2,
+        "badge_enabled": true,
+        "badge_text": "🚨 SCHIMBĂ CATEGORIA",
+        "badge_bg": "#E60000",
+        "badge_fg": "#FFFFFF",
+        "pulse_animation": true,
+        "duration_sec": 0
+      },
+      "region": {
+        "mode": "window_relative",
+        "width": 320,
+        "height": 30
+      }
+    },
+    {
+      "id": "exemplu_doua_campuri",
+      "name": "B. Status în așteptare ȘI cantitate peste zero",
+      "enabled": true,
+      "trigger": {
+        "process_name": "browser",
+        "window_title_pattern": "*GSP*|*Service Platform*"
+      },
+      "probes": [
+        {
+          "name": "status",
+          "locator": {
+            "kind": "text_near",
+            "text": "Status",
+            "offset": "right"
+          }
+        },
+        {
+          "name": "cantitate",
+          "locator": {
+            "kind": "text_near",
+            "text": "Quantity",
+            "offset": "right"
+          }
+        }
+      ],
+      "conditions": [
+        {
+          "probe": "status",
+          "operator": "equals",
+          "value": "Wait for Merge"
+        },
+        {
+          "probe": "cantitate",
+          "operator": "greater_than",
+          "value": "0"
+        }
+      ],
+      "conditions_logic": "AND",
+      "marks": [
+        {
+          "target": "status",
+          "shape": "highlight",
+          "color": "#FFB900",
+          "opacity": 0.3
+        },
+        {
+          "target": "cantitate",
+          "shape": "circle",
+          "color": "#E60000",
+          "thickness": 3,
+          "pulse": true
+        },
+        {
+          "target": "cantitate",
+          "shape": "arrow",
+          "color": "#E60000",
+          "arrow_direction": "right",
+          "arrow_count": 3
+        }
+      ]
+    },
+    {
+      "id": "exemplu_interval",
+      "name": "C. Preț în afara intervalului admis",
+      "enabled": true,
+      "trigger": {
+        "process_name": "browser",
+        "window_title_pattern": "*Portal*"
+      },
+      "probes": [
+        {
+          "name": "pret",
+          "locator": {
+            "kind": "text_near",
+            "text": "Total",
+            "offset": "right"
+          }
+        }
+      ],
+      "conditions": [
+        {
+          "probe": "pret",
+          "operator": "is_number",
+          "value": ""
+        },
+        {
+          "probe": "pret",
+          "operator": "between",
+          "value": "100;5000"
+        }
+      ],
+      "conditions_logic": "AND",
+      "marks": [
+        {
+          "target": "pret",
+          "shape": "underline",
+          "color": "#EB780A",
+          "thickness": 3
+        },
+        {
+          "target": "pret",
+          "shape": "badge",
+          "color": "#EB780A",
+          "text": "⚠️ VERIFICĂ PREȚUL"
+        }
+      ]
+    },
+    {
+      "id": "exemplu_camp_gol",
+      "name": "D. Câmp obligatoriu necompletat",
+      "enabled": true,
+      "trigger": {
+        "process_name": "browser",
+        "window_title_pattern": "*Formular*"
+      },
+      "probes": [
+        {
+          "name": "cost_center",
+          "locator": {
+            "kind": "text_near",
+            "text": "Cost Center",
+            "offset": "right"
+          }
+        }
+      ],
+      "conditions": [
+        {
+          "probe": "cost_center",
+          "operator": "is_empty",
+          "value": ""
+        }
+      ],
+      "conditions_logic": "AND",
+      "marks": [
+        {
+          "target": "cost_center",
+          "shape": "box",
+          "color": "#E60000",
+          "thickness": 4,
+          "pulse": true
+        },
+        {
+          "target": "cost_center",
+          "shape": "arrow",
+          "color": "#E60000",
+          "arrow_direction": "right",
+          "arrow_count": 2
+        },
+        {
+          "target": "cost_center",
+          "shape": "badge",
+          "color": "#E60000",
+          "text": "CÂMP OBLIGATORIU"
+        }
+      ]
+    },
+    {
+      "id": "exemplu_coordonate_fixe",
+      "name": "E. Bară de status pe eroare (coordonate fixe)",
+      "enabled": true,
+      "trigger": {
+        "process_name": ""
+      },
+      "probes": [
+        {
+          "name": "bara_status",
+          "locator": {
+            "kind": "screen_region",
+            "x": 12,
+            "y": 1040,
+            "w": 420,
+            "h": 24
+          }
+        }
+      ],
+      "conditions": [
+        {
+          "probe": "bara_status",
+          "operator": "contains",
+          "value": "error"
+        }
+      ],
+      "conditions_logic": "AND",
+      "marks": [
+        {
+          "target": "bara_status",
+          "shape": "highlight",
+          "color": "#E60000",
+          "opacity": 0.35
+        },
+        {
+          "target": "bara_status",
+          "shape": "box",
+          "color": "#E60000",
+          "thickness": 2
+        }
+      ]
+    },
+    {
+      "id": "exemplu_schimbare",
+      "name": "F. Statusul s-a schimbat",
+      "enabled": true,
+      "trigger": {
+        "process_name": "browser",
+        "window_title_pattern": "*Portal*"
+      },
+      "probes": [
+        {
+          "name": "status",
+          "locator": {
+            "kind": "text_near",
+            "text": "Status",
+            "offset": "right"
+          }
+        }
+      ],
+      "conditions": [
+        {
+          "probe": "status",
+          "operator": "changed",
+          "value": ""
+        }
+      ],
+      "conditions_logic": "AND",
+      "marks": [
+        {
+          "target": "status",
+          "shape": "circle",
+          "color": "#009966",
+          "thickness": 3
+        },
+        {
+          "target": "status",
+          "shape": "badge",
+          "color": "#009966",
+          "text": "S-A SCHIMBAT"
+        }
+      ]
+    }
+  ]
+}

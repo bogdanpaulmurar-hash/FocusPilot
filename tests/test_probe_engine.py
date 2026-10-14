@@ -665,5 +665,114 @@ class TestLegacyConversion(unittest.TestCase):
         self.assertEqual(self.for_cue({"visual_cue": {"box_enabled": True}}), [])
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Validarea configurației, înainte de salvare
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestValidation(unittest.TestCase):
+    """
+    O regulă cu o referință greșită s-ar salva fără reclamații și apoi pur și
+    simplu nu s-ar declanșa. Validarea prinde asta la salvare.
+    """
+
+    VALID = {
+        "probes": [
+            {"name": "status", "locator": {"kind": "text_near", "text": "Status",
+                                            "offset": "right"}},
+            {"name": "cantitate", "locator": {"kind": "screen_point",
+                                               "x": 1200, "y": 480}},
+        ],
+        "conditions": [
+            {"probe": "status", "operator": "equals", "value": "Merge"},
+            {"probe": "cantitate", "operator": "greater_than", "value": "0"},
+        ],
+        "conditions_logic": "AND",
+        "marks": [{"target": "cantitate", "shape": "circle", "color": "#E60000"}],
+    }
+
+    def validate(self, **overrides):
+        from core.probe_engine import validate_rule_fields
+        fields = dict(self.VALID)
+        fields.update(overrides)
+        return validate_rule_fields(fields)
+
+    def test_valid_configuration_passes(self):
+        self.assertIsNone(self.validate())
+
+    def test_empty_configuration_is_allowed(self):
+        """O regulă clasică nu folosește acest model; nu e o eroare."""
+        from core.probe_engine import validate_rule_fields
+        self.assertIsNone(validate_rule_fields({}))
+        self.assertIsNone(validate_rule_fields({"probes": [], "conditions": [],
+                                                 "marks": []}))
+
+    def test_duplicate_probe_names_rejected(self):
+        message = self.validate(probes=[
+            {"name": "status", "locator": {"kind": "text_near", "text": "a"}},
+            {"name": "status", "locator": {"kind": "text_near", "text": "b"}},
+        ])
+        self.assertIn("același nume", message)
+
+    def test_probe_without_name_rejected(self):
+        message = self.validate(probes=[
+            {"name": "  ", "locator": {"kind": "text_near", "text": "Status"}}])
+        self.assertIn("nume", message)
+
+    def test_label_locator_without_label_rejected(self):
+        message = self.validate(probes=[
+            {"name": "status", "locator": {"kind": "text_near", "text": ""}}])
+        self.assertIn("eticheta nu e completată", message)
+
+    def test_point_locator_without_coordinates_rejected(self):
+        message = self.validate(
+            probes=[{"name": "qty", "locator": {"kind": "screen_point"}}],
+            conditions=[{"probe": "qty", "operator": "is_not_empty", "value": ""}],
+            marks=[{"target": "qty", "shape": "box"}])
+        self.assertIn("coordonate", message)
+
+    def test_condition_on_unknown_probe_rejected(self):
+        message = self.validate(conditions=[
+            {"probe": "inexistent", "operator": "equals", "value": "x"}])
+        self.assertIn("nu există", message)
+
+    def test_missing_value_rejected(self):
+        message = self.validate(conditions=[
+            {"probe": "status", "operator": "equals", "value": ""}])
+        self.assertIn("valoare de comparat", message)
+
+    def test_operator_without_value_is_fine(self):
+        self.assertIsNone(self.validate(conditions=[
+            {"probe": "status", "operator": "is_not_empty", "value": ""}]))
+
+    def test_between_needs_two_values(self):
+        message = self.validate(conditions=[
+            {"probe": "cantitate", "operator": "between", "value": "10"}])
+        self.assertIn("două valori", message)
+        self.assertIsNone(self.validate(conditions=[
+            {"probe": "cantitate", "operator": "between", "value": "10;20"}]))
+
+    def test_unknown_operator_rejected(self):
+        message = self.validate(conditions=[
+            {"probe": "status", "operator": "telepathy", "value": "x"}])
+        self.assertIn("Operator necunoscut", message)
+
+    def test_no_conditions_rejected(self):
+        self.assertIn("nicio condiție", self.validate(conditions=[]))
+
+    def test_no_marks_rejected(self):
+        """Condiții fără marcaje nu desenează nimic — probabil o omisiune."""
+        self.assertIn("niciun marcaj", self.validate(marks=[]))
+
+    def test_mark_on_unknown_probe_rejected(self):
+        message = self.validate(marks=[{"target": "inexistent", "shape": "box"}])
+        self.assertIn("nu există", message)
+
+    def test_unknown_shape_rejected(self):
+        message = self.validate(marks=[{"target": "status", "shape": "hexagon"}])
+        self.assertIn("Formă", message)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

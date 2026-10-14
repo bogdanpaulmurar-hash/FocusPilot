@@ -11,8 +11,12 @@ import tkinter as tk
 from tkinter import ttk, colorchooser, messagebox
 from typing import Dict, Any, List, Optional, Callable
 
+from core import probe_engine
+from core.rule_engine import RuleEngine
+
 from ui.theme import get_theme, FONT_TITLE, FONT_SUBTITLE, FONT_BODY, FONT_BODY_BOLD, FONT_SMALL
 from ui.interactive_picker import InteractivePicker
+from ui.condition_builder import ConditionBuilderPanel
 
 logger = logging.getLogger(__name__)
 
@@ -421,6 +425,16 @@ class RuleEditorDialog:
         self.lbl_snip = tk.Label(r_snip, text=snip_txt, font=FONT_SMALL, bg=self.theme["bg_card"], fg=self.theme["accent"] if tmpl_cur else self.theme["fg_secondary"], anchor="w")
         self.lbl_snip.pack(side="left", fill="x", expand=True)
 
+        # ── Secțiunea 4b: Câmpuri, Condiții & Marcaje (model Excel) ──
+        sec_cond = self._create_card(
+            scroll_frame,
+            "4b. Condiții pe Câmpuri & Marcaje Multiple (opțional, stil Excel)")
+        self.condition_panel = ConditionBuilderPanel(
+            sec_cond, self.theme_name, self.rule,
+            start_picker=self._start_picker_for,
+            suggest_window=self._suggest_window_from_pick,
+        )
+
         # ── Secțiunea 5: Pachet de Condiții & Etape Secvențiale ──
         sec5 = self._create_card(scroll_frame, "5. Pachet de Condiții & Succesiune în Timp (Workflow / Pași în Lanț)")
         
@@ -548,50 +562,74 @@ class RuleEditorDialog:
             self._update_preview()
 
     def _start_picker(self) -> None:
-        # Eliberăm grab-ul modal de pe dialog înainte de a ascunde ferestrele,
-        # altfel Tkinter blochează toate click-urile și tastele trimise către fereastra de selecție!
+        """Captură de zonă pentru chenarul regulii."""
+        self._start_picker_for("region", self._on_picked)
+
+    def _start_picker_for(self, mode: str,
+                          on_picked: Callable[[Dict[str, Any]], None]) -> None:
+        """
+        Pornește selectorul de ecran și întoarce rezultatul la `on_picked`.
+
+        Panoul de câmpuri folosește același selector, dar în modul "point", ca
+        să captureze coordonatele unui singur câmp.
+        """
+        # Grab-ul modal trebuie eliberat ÎNAINTE de a ascunde ferestrele:
+        # altfel Tkinter reține toate click-urile și tastele, iar fereastra de
+        # selecție nu primește niciun eveniment.
         try:
             self.dialog.grab_release()
         except Exception:
             pass
 
-        # Ascundem dialogul de editare și Dashboard-ul
         self.dialog.withdraw()
         try:
             self.parent.withdraw()
         except Exception:
             pass
 
-        picker = InteractivePicker(self.parent, self._on_picked, on_cancel=self._on_picker_cancelled)
-        picker.start()
+        def _done(data: Dict[str, Any]) -> None:
+            self._restore_after_picker()
+            on_picked(data)
+
+        InteractivePicker(self.parent, _done, on_cancel=self._on_picker_cancelled,
+                          mode=mode).start()
+
+    def _restore_after_picker(self) -> None:
+        """Readuce dialogul în prim-plan după selecție."""
+        try:
+            self.parent.deiconify()
+        except Exception:
+            pass
+        self.dialog.deiconify()
+        self.dialog.lift()
+        self.dialog.focus_force()
+        try:
+            self.dialog.grab_set()
+        except Exception:
+            pass
 
     def _on_picker_cancelled(self) -> None:
-        # Readucem ferestrele la anulare cu ESC
-        try:
-            self.parent.deiconify()
-        except Exception:
-            pass
-        self.dialog.deiconify()
-        self.dialog.lift()
-        self.dialog.focus_force()
-        try:
-            self.dialog.grab_set()
-        except Exception:
-            pass
+        self._restore_after_picker()
+
+    def _suggest_window_from_pick(self, window_title: str, process_name: str) -> None:
+        """
+        Completează filtrele de fereastră din ce a fost selectat, dar numai dacă
+        utilizatorul nu le-a pus deja: o selecție de câmp nu trebuie să
+        suprascrie un titlu scris de el.
+        """
+        current = self.ent_win_title.get().strip()
+        if window_title and current in ("", "*"):
+            self.ent_win_title.delete(0, tk.END)
+            self.ent_win_title.insert(0, f"*{window_title[:40]}*")
+
+        if process_name:
+            if process_name.lower() in ("chrome.exe", "msedge.exe", "firefox.exe"):
+                self.var_proc.set("browser (Edge + Chrome)")
+            else:
+                self.var_proc.set(process_name.lower())
 
     def _on_picked(self, data: Dict[str, Any]) -> None:
-        try:
-            self.parent.deiconify()
-        except Exception:
-            pass
-        self.dialog.deiconify()
-        self.dialog.lift()
-        self.dialog.focus_force()
-        try:
-            self.dialog.grab_set()
-        except Exception:
-            pass
-        # Populăm automat câmpurile pe baza selecției utilizatorului
+        # Populăm câmpurile pe baza selecției utilizatorului
         if data.get("window_title"):
             self.ent_win_title.delete(0, tk.END)
             self.ent_win_title.insert(0, f"*{data['window_title'][:40]}*")
@@ -999,6 +1037,11 @@ class RuleEditorDialog:
         else:
             snap["steps"] = []
 
+        # Câmpuri, condiții și marcaje. Dacă panoul nu e folosit, cheile se
+        # golesc, iar motorul tratează regula pe calea clasică.
+        if getattr(self, "condition_panel", None) is not None:
+            snap.update(self.condition_panel.to_rule_fields())
+
         return snap
 
     def _test_current_rule(self) -> None:
@@ -1047,6 +1090,8 @@ class RuleEditorDialog:
         report.append(f"Ferestre verificate: {len(windows)} (pe toate monitoarele)")
         report.append("")
 
+        uses_probes = probe_engine.uses_conditions(rule_data)
+
         match = None
         for window in windows:
             result = RuleEngine.evaluate(rule_data, window, virtual)
@@ -1056,7 +1101,13 @@ class RuleEditorDialog:
             report.append(f"     proces: {window.get('process_name') or '?'}")
             if window.get("url"):
                 report.append(f"     URL:    {window['url'][:60]}")
-            report.append(f"     {result.reason}")
+
+            if uses_probes:
+                # Pentru regulile cu câmpuri arătăm fiecare condiție separat, cu
+                # valoarea citită efectiv: altfel nu se vede CARE condiție a picat.
+                report.extend(self._condition_lines(rule_data, window))
+            else:
+                report.append(f"     {result.reason}")
             report.append("")
             if result.matched and match is None:
                 match = (window, result)
@@ -1088,12 +1139,58 @@ class RuleEditorDialog:
         messagebox.showinfo("Diagnosticare Live FocusPilot", "\n".join(report),
                             parent=self.dialog)
 
+    def _condition_lines(self, rule: Dict[str, Any],
+                         window: Dict[str, Any]) -> List[str]:
+        """Starea fiecărei condiții pe o fereastră, cu valorile citite."""
+        from core.rule_engine import capture_window_text
+
+        try:
+            snapshot = capture_window_text(window.get("hwnd"), force=True)
+        except Exception as exc:
+            return [f"     Textul ferestrei nu a putut fi citit: {exc}"]
+
+        outcome = probe_engine.evaluate_conditions(
+            rule, snapshot, window.get("rect") or (0, 0, 0, 0))
+
+        lines = []
+        for item in outcome.outcomes:
+            lines.append("     " + item.describe())
+        for reading in outcome.readings.values():
+            if not reading.located:
+                lines.append(f"       ⚠️ {reading.name}: {reading.note}")
+        lines.append(f"     Logică: {outcome.logic}")
+        return lines
+
     def _save_and_close(self) -> None:
-        name = self.ent_name.get().strip()
-        if not name:
-            messagebox.showwarning("Atenție", "Introduceți un nume pentru regulă.", parent=self.dialog)
+        if not self.ent_name.get().strip():
+            messagebox.showwarning("Atenție", "Introduceți un nume pentru regulă.",
+                                   parent=self.dialog)
             return
 
+        # Validarea câmpurilor și condițiilor se face înainte de salvare, ca
+        # utilizatorul să afle acum, nu când regula nu se declanșează.
+        if getattr(self, "condition_panel", None) is not None:
+            problem = self.condition_panel.validate()
+            if problem:
+                messagebox.showwarning("Configurație incompletă", problem,
+                                       parent=self.dialog)
+                return
+
         final_rule = self._get_current_rule_snapshot()
+
+        if not probe_engine.uses_conditions(final_rule):
+            criteria, _logic = RuleEngine.extract_criteria_list(
+                final_rule.get("trigger", {}))
+            title = final_rule.get("trigger", {}).get("window_title_pattern", "")
+            if not criteria and title in ("", "*"):
+                if not messagebox.askyesno(
+                        "Regulă foarte largă",
+                        "Regula nu are nici text căutat, nici filtru de titlu, "
+                        "nici condiții pe câmpuri.\n\n"
+                        "Se va declanșa pe orice fereastră care trece filtrul de "
+                        "aplicație. Continuați?",
+                        parent=self.dialog):
+                    return
+
         self.on_save(final_rule)
         self.dialog.destroy()

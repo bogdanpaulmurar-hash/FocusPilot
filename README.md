@@ -108,16 +108,72 @@ FocusPilot/
 
 ---
 
+## 📖 Cum se scriu reguli
+
+**[GHID_REGULI.md](GHID_REGULI.md)** — ghidul complet: ce face fiecare setare,
+referință de operatori și forme, și reguli-exemplu gata de folosit din
+[`examples/reguli_exemplu.json`](examples/reguli_exemplu.json).
+
+### Două feluri de reguli
+
+**Regulă simplă** — „dacă textul *X* apare pe ecran, marchează-l".
+
+**Regulă pe condiții**, ca formatarea condițională din Excel:
+
+| Excel | FocusPilot |
+|---|---|
+| `$B$4`, `$D$7` | **câmp** numit, localizat pe ecran |
+| `=AND($B$4="Merge"; $D$7>0)` | **condiții** pe câmpuri, legate prin AND / OR |
+| format: fundal, chenar, font | **marcaje**: chenar, cerc, highlight, săgeți |
+
+```
+CÂMPURI          status      ← valoarea din dreapta etichetei "Status"
+                 cantitate   ← valoarea din dreapta etichetei "Quantity"
+                      ↓
+CONDIȚII         status este exact "Wait for Merge"   AND
+                 cantitate este mai mare decât 0
+                      ↓
+MARCAJE          încercuiește cantitate cu roșu
+                 highlight galben pe status
+                 3 săgeți ➔ spre cantitate
+```
+
+Un câmp se localizează **după o etichetă** (urmărește elementul la scroll —
+varianta recomandată) sau prin **coordonate fixe** capturate cu mouse-ul
+(pentru ce stă mereu în același loc: bare de status, panouri fixe).
+
+**17 operatori**: text (exact, conține, începe cu, regex...), numerici
+(`>`, `<`, `între`), goliciune, și „s-a schimbat de la ultima verificare".
+Comparațiile numerice înțeleg formatele reale de interfață: `1.234,50`,
+`1,234.50` și `1 250 EUR`.
+
+**7 forme de marcaj**: chenar, cerc/elipsă, highlight translucid, subliniere,
+linie peste text, săgeți multiple, badge. Mai multe marcaje per regulă, pe
+câmpuri diferite, cu culori diferite.
+
+Regulile scrise înainte continuă să funcționeze neschimbat.
+
+---
+
 ## 🧪 Teste
 
 ```powershell
-python tests/test_rule_engine.py      # motorul de reguli (47 teste)
-node   tests/test_userscript.js       # logica de potrivire din browser (20 teste)
+python tests/run_all.py               # tot (164 teste Python + 20 JavaScript)
 ```
 
-Testele pentru motor nu au nevoie de Windows: modulele `win32*` și
-`uiautomation` sunt înlocuite cu dubluri, iar textul „citit de pe ecran" este
-furnizat direct de test.
+Sau separat:
+
+```powershell
+python tests/test_rule_engine.py      # motorul de reguli
+python tests/test_probe_engine.py     # câmpuri, condiții, marcaje
+python tests/test_examples.py          # regulile-exemplu din documentație
+node   tests/test_userscript.js       # logica de potrivire din browser
+```
+
+Testele Python nu au nevoie de Windows: modulele `win32*` și `uiautomation`
+sunt înlocuite cu dubluri, iar textul „citit de pe ecran" e furnizat direct de
+test. `test_examples.py` trece regulile din documentație prin motorul real,
+ca un exemplu din ghid să nu poată fi unul care nu funcționează.
 
 ---
 
