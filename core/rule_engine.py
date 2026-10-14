@@ -34,7 +34,12 @@ import threading
 import time
 from typing import Dict, Any, List, Optional, Tuple, NamedTuple
 
+from core import probe_engine
+
 logger = logging.getLogger(__name__)
+
+# Valorile citite la scanarea anterioară, pentru operatorul „s-a schimbat".
+_previous_probe_values: Dict[str, Dict[str, str]] = {}
 
 # ── Limite de siguranță pentru parcurgerea arborelui de accesibilitate ──
 # Un arbore UIA de pagină web poate avea zeci de mii de noduri. Fără aceste
@@ -56,10 +61,14 @@ class MatchResult(NamedTuple):
     geometry: Optional[Tuple[int, int, int, int]]  # (x, y, w, h) pe ecranul virtual
     anchor: str          # "uia" | "template" | "configured" | "none"
     reason: str          # explicație lizibilă, pentru diagnostic și log
+    # Marcaje rezolvate, pentru regulile cu câmpuri și condiții. Fiecare are
+    # propria formă, culoare și dreptunghi, deci o regulă poate evidenția mai
+    # multe câmpuri simultan, diferit.
+    marks: Tuple[Dict[str, Any], ...] = ()
 
     @property
     def drawable(self) -> bool:
-        return self.matched and self.geometry is not None
+        return self.matched and (self.geometry is not None or bool(self.marks))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -549,7 +558,15 @@ class RuleEngine:
                                    f"URL nepotrivit: regula cere '{url_pattern}', "
                                    f"pagina este '{url[:70]}'.")
 
-        # ── 4. Filtru text ──────────────────────────────────────────────────
+        # ── 4a. Câmpuri și condiții (modelul Excel) ─────────────────────────
+        # Dacă regula definește câmpuri și condiții, acestea decid. Regulile
+        # care folosesc doar `trigger.search_text` merg pe calea de mai jos,
+        # deci configurațiile existente funcționează nemodificate.
+        if probe_engine.uses_conditions(rule):
+            return cls._evaluate_conditions(rule, window_info, virtual_screen,
+                                            active_step, hwnd)
+
+        # ── 4b. Filtru text ─────────────────────────────────────────────────
         criteria, logic = cls.extract_criteria_list(trigger)
 
         if not criteria:
@@ -625,6 +642,60 @@ class RuleEngine:
                  "configured": "la coordonatele configurate"}[anchor]
         return MatchResult(True, geo, anchor,
                            f"Potrivire: '{found[0] if found else template}' — {where}.")
+
+    # ── Evaluarea pe câmpuri și condiții ─────────────────────────────────────
+
+    @classmethod
+    def _evaluate_conditions(cls, rule: Dict[str, Any], window_info: Dict[str, Any],
+                             virtual_screen: Optional[Tuple[int, int, int, int]],
+                             active_step: Optional[Dict[str, Any]],
+                             hwnd: Optional[int]) -> MatchResult:
+        """
+        Evaluează o regulă de forma „dacă câmpul X are valoarea Z și câmpul Y
+        are valoarea C, atunci marchează...".
+        """
+        snapshot = capture_window_text(hwnd) if hwnd else None
+        window_rect = window_info.get("rect") or (0, 0, 0, 0)
+
+        rule_id = str(rule.get("id", "") or "")
+        previous = _previous_probe_values.get(rule_id, {})
+
+        outcome = probe_engine.evaluate_conditions(rule, snapshot, window_rect,
+                                                   previous_values=previous)
+
+        # Reținem valorile pentru operatorul „s-a schimbat".
+        _previous_probe_values[rule_id] = {
+            name: (reading.value or "")
+            for name, reading in outcome.readings.items()
+            if reading.value is not None
+        }
+
+        if not outcome.matched:
+            failing = [o for o in outcome.outcomes if not o.passed]
+            if failing:
+                detail = failing[0].describe().lstrip("❌ ").strip()
+            else:
+                detail = "Regula nu are nicio condiție definită."
+            return MatchResult(False, None, "none", detail)
+
+        fallback = cls.resolve_geometry(rule, window_info, virtual_screen,
+                                        located=None, active_step=active_step)
+        marks = probe_engine.resolve_marks(rule, outcome.readings, fallback)
+
+        if not marks:
+            return MatchResult(
+                True, None, "none",
+                "Condițiile sunt îndeplinite, dar niciun marcaj nu a putut fi "
+                "plasat: câmpurile țintă nu sunt vizibile pe ecran."
+            )
+
+        # Geometria principală rămâne primul marcaj, pentru compatibilitate cu
+        # codul care așteaptă un singur dreptunghi.
+        passed = len(outcome.outcomes)
+        return MatchResult(True, marks[0]["rect"], "probe",
+                           f"{passed} condiție(i) îndeplinite ({outcome.logic}); "
+                           f"{len(marks)} marcaj(e).",
+                           marks=tuple(marks))
 
     # ── Ajutătoare pentru evaluare ───────────────────────────────────────────
 

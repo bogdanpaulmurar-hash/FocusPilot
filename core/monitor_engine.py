@@ -393,7 +393,9 @@ class MonitorEngine:
 
         # Trimitem doar la schimbare, dar semnătura include coordonatele, ca
         # reperul să urmărească elementul când utilizatorul derulează pagina.
-        signature = repr([(c["rule_id"], c["geometry"]) for c in cues])
+        signature = repr([(c["rule_id"], c["geometry"],
+                           tuple(m.get("rect") for m in c.get("marks", ())))
+                          for c in cues])
         if signature != self._last_cues_signature:
             self._last_cues_signature = signature
             if self.on_cues_changed:
@@ -461,6 +463,9 @@ class MonitorEngine:
                 "visual_cue": visual,
                 "window_title": win_info["title"],
                 "anchor": result.anchor,
+                # Regulile cu câmpuri și condiții pot marca mai multe locuri
+                # simultan, fiecare cu propria formă și culoare.
+                "marks": list(result.marks),
             }
 
         # Nicio fereastră nu se potrivește: cronometrul repornește la revenire.
