@@ -331,7 +331,6 @@ class MainWindow:
         if self.cfg.move_rule_down(rule_id):
             self.on_rules_changed()
             self.refresh_rules_list()
-        self._render_badge(cue_row, dur_txt, self.theme["bg_input"], self.theme["fg_secondary"])
 
     def _render_badge(self, parent: tk.Widget, text: str, bg: str, fg: str) -> None:
         b = tk.Label(parent, text=text, font=FONT_SMALL, bg=bg, fg=fg, padx=6, pady=1)

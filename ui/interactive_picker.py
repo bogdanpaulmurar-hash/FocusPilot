@@ -247,8 +247,7 @@ class InteractivePicker:
             self.overlay = None
             self.canvas = None
             try:
-                if self.parent:
-                    self.parent.update_idletasks()
-                    self.parent.update()
+                if self.master:
+                    self.master.update_idletasks()
             except Exception:
                 pass

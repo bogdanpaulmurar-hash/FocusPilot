@@ -48,10 +48,19 @@
 ## 🚀 Instalare și Rulare
 
 ### Dependențe
-Dependențele sunt deja disponibile în mediul tău Python:
+
 ```powershell
-pip install pystray pillow pywin32 pyautogui playwright
+pip install -r requirements.txt
 ```
+
+Două pachete sunt **obligatorii pentru detecție**, nu opționale:
+
+| Pachet | Fără el |
+|---|---|
+| `uiautomation` | Aplicația nu poate citi textul din pagini și aplicații, deci **nicio regulă bazată pe text nu se declanșează**. |
+| `opencv-python` | Urmărirea prin șablon imagine (snip) eșuează la fiecare încercare. |
+
+FocusPilot verifică ambele la pornire și afișează un avertisment dacă lipsesc.
 
 ### Pornire
 - **Dublu clic pe `run_focuspilot.vbs`** (pornire invizibilă 100%, fără flash de consolă).
@@ -95,4 +104,69 @@ FocusPilot/
 └── assets/
     ├── icon.png                    # Logo grafic
     └── tray_icon.ico               # Icoană Windows
+```
+
+---
+
+## 🧪 Teste
+
+```powershell
+python tests/test_rule_engine.py      # motorul de reguli (47 teste)
+node   tests/test_userscript.js       # logica de potrivire din browser (20 teste)
+```
+
+Testele pentru motor nu au nevoie de Windows: modulele `win32*` și
+`uiautomation` sunt înlocuite cu dubluri, iar textul „citit de pe ecran" este
+furnizat direct de test.
+
+---
+
+## 🔧 Dacă o regulă nu se declanșează
+
+Apasă **🔍 Diagnosticare Live** în editorul de reguli. Butonul rulează
+*exact același motor* ca monitorizarea, pe toate ferestrele deschise, și spune
+pentru fiecare ce filtru a trecut și ce filtru a picat.
+
+Ordinea în care sunt verificate filtrele:
+
+| # | Filtru | Setare | Observații |
+|---|---|---|---|
+| 1 | Proces | `Aplicație / Browser` | `browser` acoperă Edge, Chrome, Firefox, Brave, Opera. |
+| 2 | Titlu fereastră | `Titlu Fereastră / Tab` | Un cuvânt fără `*` devine `*cuvânt*`. `\|` separă alternative. |
+| 3 | URL | `Link / URL Pagină Web` | Lasă `*` dacă adresa nu contează. |
+| 4 | Text | `Criteriu Text #1` + criterii suplimentare | Conform `Condiție Text` și relației OR / AND. |
+
+Un filtru lăsat pe `*` sau gol nu respinge nimic. Toate filtrele completate
+trebuie să treacă.
+
+### Unde se desenează chenarul
+
+Prima variantă disponibilă, în această ordine:
+
+1. **Pe elementul găsit în pagină** — chenarul urmărește textul la scroll.
+2. **Pe șablonul imagine**, dacă regula are un snip și acesta e pe ecran.
+3. **La coordonatele salvate** din regulă, conform `Mod Poziționare`.
+
+Varianta 3 se folosește doar când potrivirea a venit din text sau titlu. Dacă
+regula s-a potrivit *exclusiv* prin șablon imagine și acesta nu mai e pe ecran,
+nu se desenează nimic: elementul s-a mutat, iar un chenar la poziția veche ar
+indica locul greșit.
+
+### Chenarul rămâne în urmă la scroll în browser
+
+Un overlay desktop desenează la coordonate de ecran. Când textul e localizat
+prin UI Automation, coordonatele se recalculează la fiecare scanare, deci
+chenarul urmărește textul. Pentru sincronizare perfectă în pagini web,
+instalează userscript-ul generat în `integrations/` prin Tampermonkey sau
+Violentmonkey: acolo chenarul e atașat de nodul HTML.
+
+Userscript-ul se regenerează automat la fiecare salvare de regulă.
+
+### Jurnal
+
+`focuspilot_log.txt`, rotativ la 2 MB. Pentru detalii complete:
+
+```powershell
+set FOCUSPILOT_DEBUG=1
+pythonw.exe FocusPilot.pyw
 ```

@@ -22,3 +22,5 @@ Desktop.ini
 # Python virtual env
 venv/
 .venv/
+# Scanări salvate de selectorul interactiv
+assets/rules/

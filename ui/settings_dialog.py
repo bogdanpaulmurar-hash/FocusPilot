@@ -7,7 +7,7 @@ Keep Awake (Sistem treaz), Interval de scanare și Temă Siemens (Dark / Light).
 import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Optional, Callable
 
 from core.config_manager import ConfigManager
 from core.autostart import set_autostart, is_autostart_enabled

@@ -1,5 +1,22 @@
+# Interfață și prezență în System Tray
 pystray>=0.19.5
 pillow>=10.0.0
+
+# API-uri Windows: ferestre, registru, stiluri de overlay
 pywin32>=306
+
+# Detecția textului din pagini web și aplicații desktop.
+# Fără acest pachet regulile bazate pe text NU se declanșează niciodată:
+# motorul nu poate citi conținutul ferestrelor.
+uiautomation>=2.0.18
+
+# Captură de ecran și potrivire de șabloane imagine (snip)
 pyautogui>=0.9.54
+
+# Necesar pentru parametrul `confidence` al pyautogui.locateOnScreen.
+# Fără el urmărirea prin șablon imagine eșuează la fiecare apel.
+opencv-python>=4.8.0
+
+# Opțional: injectare directă în browser prin CDP.
+# Alternativa fără Playwright este userscript-ul generat pentru Tampermonkey.
 playwright>=1.40.0

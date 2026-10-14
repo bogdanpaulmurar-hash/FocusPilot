@@ -6,9 +6,10 @@ configurare declanșator text și săgeți/chenare vizuale.
 
 import copy
 import logging
+import re
 import tkinter as tk
 from tkinter import ttk, colorchooser, messagebox
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable
 
 from ui.theme import get_theme, FONT_TITLE, FONT_SUBTITLE, FONT_BODY, FONT_BODY_BOLD, FONT_SMALL
 from ui.interactive_picker import InteractivePicker
@@ -36,6 +37,22 @@ class RuleEditorDialog:
         self.criteria_rows: List[tk.Frame] = []
 
         self._build_ui()
+
+    @staticmethod
+    def _as_int(value: Any, default: int) -> int:
+        """Conversie tolerantă: o valoare lipsă sau invalidă nu blochează dialogul."""
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+    @classmethod
+    def _spin_value(cls, var: tk.Variable, default: int) -> int:
+        """Citește un Spinbox fără a arunca excepție la text invalid."""
+        try:
+            return cls._as_int(var.get(), default)
+        except tk.TclError:
+            return default
 
     def _get_default_rule(self) -> Dict[str, Any]:
         return {
@@ -203,15 +220,25 @@ class RuleEditorDialog:
         r_cond.pack(fill="x", pady=4)
         tk.Label(r_cond, text="Condiție Text:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"], width=18, anchor="w").pack(side="left")
 
+        # Etichetele definite erau construite dar nelegate de combobox: lista
+        # afișa valorile interne ("contains", "equals"). Acum eticheta e ce vede
+        # utilizatorul, iar valoarea salvată se obține prin maparea inversă.
         self.cond_options = [
             ("Conține text (Contains)", "contains"),
             ("Este exact (Equals)", "equals"),
             ("Începe cu (Starts with)", "starts_with"),
-            ("Constelație cuvinte cheie (Separate prin ;)", "constellation"),
-            ("Expresie regulată (Regex)", "regex")
+            ("Constelație cuvinte cheie (separate prin ;)", "constellation"),
+            ("Expresie regulată (Regex)", "regex"),
         ]
-        self.var_cond = tk.StringVar(value=self.rule.get("trigger", {}).get("text_condition", "contains"))
-        combo_cond = ttk.Combobox(r_cond, textvariable=self.var_cond, values=[opt[1] for opt in self.cond_options], state="readonly", width=16)
+        self._cond_label_to_value = {label: value for label, value in self.cond_options}
+        self._cond_value_to_label = {value: label for label, value in self.cond_options}
+
+        saved_cond = str(self.rule.get("trigger", {}).get("text_condition", "contains"))
+        self.var_cond = tk.StringVar(
+            value=self._cond_value_to_label.get(saved_cond, self.cond_options[0][0]))
+        combo_cond = ttk.Combobox(r_cond, textvariable=self.var_cond,
+                                  values=[label for label, _ in self.cond_options],
+                                  state="readonly", width=34)
         combo_cond.pack(side="left", padx=(8, 0))
 
         # Text Căutat (Criteriul Principal #1)
@@ -291,14 +318,17 @@ class RuleEditorDialog:
         cb_scope.pack(side="left", padx=(8, 10))
 
         tk.Label(r_box_scope, text="Lățime:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left")
-        init_w = int(self.rule.get("region", {}).get("width", 816 if "GSP" in self.rule.get("name", "") else 350))
+        # Dimensiunile implicite nu depind de numele regulii. Varianta anterioară
+        # alegea 816x39 dacă numele conținea "GSP" și 350x60 altfel, deci
+        # redenumirea unei reguli îi schimba chenarul.
+        init_w = self._as_int(self.rule.get("region", {}).get("width"), 350)
         self.var_region_w = tk.IntVar(value=init_w)
         sp_rw = tk.Spinbox(r_box_scope, from_=40, to=3800, textvariable=self.var_region_w, width=5, font=FONT_BODY, command=self._update_preview)
         sp_rw.bind("<KeyRelease>", lambda e: self._update_preview())
         sp_rw.pack(side="left", padx=(4, 8))
 
         tk.Label(r_box_scope, text="Înălțime:", font=FONT_BODY, bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left")
-        init_h = int(self.rule.get("region", {}).get("height", 39 if "GSP" in self.rule.get("name", "") else 60))
+        init_h = self._as_int(self.rule.get("region", {}).get("height"), 60)
         self.var_region_h = tk.IntVar(value=init_h)
         sp_rh = tk.Spinbox(r_box_scope, from_=15, to=2000, textvariable=self.var_region_h, width=4, font=FONT_BODY, command=self._update_preview)
         sp_rh.bind("<KeyRelease>", lambda e: self._update_preview())
@@ -903,8 +933,12 @@ class RuleEditorDialog:
         else:
             snap["trigger"]["process_name"] = proc_val.split()[0].lower()
 
-        snap["trigger"]["text_condition"] = self.var_cond.get()
+        snap["trigger"]["text_condition"] = self._cond_label_to_value.get(
+            self.var_cond.get(), "contains")
         snap["trigger"]["search_text"] = self.ent_search_text.get().strip()
+        # "Expresie regulată" din lista de condiții activează și indicatorul
+        # folosit de motor, ca cele două setări să nu se poată contrazice.
+        snap["trigger"]["is_regex"] = (snap["trigger"]["text_condition"] == "regex")
 
         # Preluare criterii dinamice adăugate prin butonul [+]
         additional_list = self._get_all_criteria_values()
@@ -944,13 +978,21 @@ class RuleEditorDialog:
             dur = 0
         snap["visual_cue"]["duration_sec"] = dur
 
-        if "region" not in snap:
-            snap["region"] = {}
-        snap["region"]["mode"] = self.var_mode.get()
-        if hasattr(self, "var_region_w"):
-            snap["region"]["width"] = self.var_region_w.get()
-        if hasattr(self, "var_region_h"):
-            snap["region"]["height"] = self.var_region_h.get()
+        region = snap.setdefault("region", {})
+        region["mode"] = self.var_mode.get()
+        # Un Spinbox poate conține text tastat de utilizator, nu doar cifre, iar
+        # `IntVar.get()` ar arunca excepție și ar anula salvarea regulii.
+        region["width"] = self._spin_value(self.var_region_w, 350)
+        region["height"] = self._spin_value(self.var_region_h, 60)
+
+        # Coordonatele capturate cu selectorul interactiv se păstrează explicit:
+        # pe ele se bazează desenarea când elementul nu poate fi localizat live.
+        for key, default in (("abs_x", 0), ("abs_y", 0),
+                             ("rel_x", 0.2), ("rel_y", 0.3),
+                             ("monitor_index", -1)):
+            region.setdefault(key, self.rule.get("region", {}).get(key, default))
+        if self.rule.get("region", {}).get("template_image"):
+            region["template_image"] = self.rule["region"]["template_image"]
 
         if self.var_has_steps.get() and self.steps:
             snap["steps"] = copy.deepcopy(self.steps)
@@ -969,146 +1011,82 @@ class RuleEditorDialog:
         self.on_test_cue(snapshot)
 
     def _run_live_diagnostic(self) -> None:
-        """Verifică de ce regula se declanșează sau nu în direct pe ecran și oferă diagnostic exact."""
-        import win32gui, win32process, ctypes, os
-        from core.rule_engine import RuleEngine
+        """
+        Explică de ce regula se declanșează sau nu, chiar acum, pe ecran.
+
+        Foloseste ACELASI motor ca monitorizarea. Varianta anterioară avea
+        propria copie a logicii de potrivire, care putea raporta
+        "REGULA ESTE 100% VALIDĂ" pentru o regulă ce nu se declanșa niciodată
+        în realitate — motorul real evalua alte condiții.
+        """
+        from core.monitor_engine import (enumerate_content_windows,
+                                         get_virtual_screen_bounds)
+        from core.rule_engine import RuleEngine, CAPABILITIES
 
         rule_data = self._get_current_rule_snapshot()
-        trigger = rule_data.get("trigger", {})
-        win_pattern = trigger.get("window_title_pattern", "*")
-        proc_pattern = trigger.get("process_name", "")
-        criteria_list, criteria_logic = RuleEngine.extract_criteria_list(trigger)
+        virtual = get_virtual_screen_bounds()
+        windows = enumerate_content_windows()
 
-        def get_proc_name_from_hwnd(h):
-            try:
-                _, pid = win32process.GetWindowThreadProcessId(h)
-                hp = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
-                if hp:
-                    buf = ctypes.create_unicode_buffer(1024)
-                    sz = ctypes.c_ulong(1024)
-                    ctypes.windll.kernel32.QueryFullProcessImageNameW(hp, 0, buf, ctypes.byref(sz))
-                    ctypes.windll.kernel32.CloseHandle(hp)
-                    return os.path.basename(buf.value).lower()
-            except Exception:
-                pass
-            return ""
+        report = ["🔍 DIAGNOSTICARE LIVE FOCUSPILOT", "=" * 48, ""]
 
-        # Găsim ferestrele candidat mari din sistem (excludem ferestre mici, Picture-in-picture, popup-uri)
-        candidate_windows = []
-        def enum_candidate(h, _):
-            if win32gui.IsWindowVisible(h):
-                t = win32gui.GetWindowText(h)
-                if t and len(t.strip()) > 1:
-                    r = win32gui.GetWindowRect(h)
-                    w, h_sz = r[2] - r[0], r[3] - r[1]
-                    if w > 400 and h_sz > 250:
-                        p = get_proc_name_from_hwnd(h)
-                        if p and p not in ["focuspilot.exe", "python.exe", "pythonw.exe", "textinputhost.exe", "explorer.exe"]:
-                            if "picture in picture" not in t.lower() and "chrome legacy" not in t.lower():
-                                candidate_windows.append((h, t, p, w * h_sz))
-            return True
-        win32gui.EnumWindows(enum_candidate, None)
+        missing = CAPABILITIES.missing()
+        if missing:
+            report += [
+                "⚠️ DEPENDENȚE LIPSĂ — detecția este incompletă:",
+                f"     pip install {' '.join(missing)}",
+            ]
+            if "uiautomation" in missing:
+                report.append("   Fără 'uiautomation' textul din pagini nu poate fi citit.")
+            report.append("")
 
-        def score_cand(cand):
-            h, t, p, area = cand
-            sc = 0
-            if win_pattern and win_pattern != "*" and RuleEngine.match_string(win_pattern, t):
-                sc += 1000
-            if proc_pattern and proc_pattern != "orice proces":
-                if proc_pattern in ["browser", "chrome.exe", "msedge.exe"] and p in ["chrome.exe", "msedge.exe"]:
-                    sc += 200
-                elif RuleEngine.match_string(proc_pattern, p):
-                    sc += 200
-            sc += min(50, area // 50000)
-            return sc
-
-        candidate_windows.sort(key=score_cand, reverse=True)
-
-        diag = ["🔍 DIAGNOSTICARE LIVE FOCUSPILOT\n" + "="*45]
-        if not candidate_windows:
-            diag.append("❌ Nu s-a găsit nicio fereastră de aplicație mare deschisă.")
-            messagebox.showinfo("Diagnosticare Live", "\n".join(diag), parent=self.dialog)
+        if not windows:
+            report.append("❌ Nu s-a găsit nicio fereastră de aplicație deschisă.")
+            messagebox.showinfo("Diagnosticare Live", "\n".join(report), parent=self.dialog)
             return
 
-        selected_h, selected_t, selected_p, _ = candidate_windows[0]
+        report.append(f"Ferestre verificate: {len(windows)} (pe toate monitoarele)")
+        report.append("")
 
-        diag.append(f"• Fereastră analizată: \"{selected_t[:50]}\"")
-        diag.append(f"• Executabil detectat: {selected_p} (HWND {selected_h})\n")
+        match = None
+        for window in windows:
+            result = RuleEngine.evaluate(rule_data, window, virtual)
+            mark = "✅" if result.matched else "❌"
+            title = (window.get("title") or "")[:44]
+            report.append(f"{mark} {title}")
+            report.append(f"     proces: {window.get('process_name') or '?'}")
+            if window.get("url"):
+                report.append(f"     URL:    {window['url'][:60]}")
+            report.append(f"     {result.reason}")
+            report.append("")
+            if result.matched and match is None:
+                match = (window, result)
 
-        # 1. Filtru Proces
-        proc_ok = True
-        proc_cfg = proc_pattern.strip().lower()
-        if proc_cfg and proc_cfg not in ["*", "orice proces"]:
-            if proc_cfg in ["browser", "msedge.exe", "chrome.exe", "firefox.exe"]:
-                proc_ok = selected_p in ["msedge.exe", "chrome.exe", "firefox.exe"]
-            else:
-                proc_ok = RuleEngine.match_string(proc_cfg, selected_p, case_sensitive=False)
-        diag.append(f"{'✅' if proc_ok else '❌'} 1. Filtru Aplicație: {'CORECT' if proc_ok else 'NEPOTRIVIT'} (Configurat: '{proc_pattern or '*'}', Detectat: '{selected_p}')")
-
-        # 2. Filtru Titlu
-        title_ok = True
-        if win_pattern and win_pattern != "*":
-            norm = win_pattern if ("*" in win_pattern or "?" in win_pattern) else f"*{win_pattern}*"
-            title_ok = RuleEngine.match_string(norm, selected_t, case_sensitive=False)
-        diag.append(f"{'✅' if title_ok else '❌'} 2. Filtru Titlu: {'CORECT' if title_ok else 'NEPOTRIVIT'} (Configurat: '{win_pattern}', Titlu real: '{selected_t[:35]}')")
-
-        # 3. Criterii Text & UIA
-        diag.append(f"\n3. Evaluare Criterii (Logică: {criteria_logic}):")
-        crit_results = []
-        for c in criteria_list:
-            found_t = RuleEngine.match_string(c, selected_t, case_sensitive=False)
-            geo = RuleEngine.find_uia_control_geometry(selected_h, c)
-            if not geo and ("'" in c or '"' in c):
-                geo = RuleEngine.find_uia_control_geometry(selected_h, c.replace("'", "").replace('"', ""))
-            crit_ok = bool(found_t or geo)
-            desc = "Găsit în titlu" if found_t else (f"Găsit pe ecran la Y={geo[1]}px" if geo else "Negăsit pe ecran")
-            crit_results.append((c, crit_ok, desc))
-            diag.append(f"   {'✅' if crit_ok else '❌'} • '{c[:35]}': {desc}")
-
-        if criteria_logic == "AND":
-            txt_ok = all(r[1] for r in crit_results) if crit_results else True
-        else: # OR
-            txt_ok = any(r[1] for r in crit_results) if crit_results else True
-
-        # Verificare suplimentară șablon imagine dacă nu s-a găsit prin UIA
-        found_snip = False
-        tmpl = rule_data.get("region", {}).get("template_image", "")
-        if tmpl and not txt_ok:
-            import pyautogui
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            tmpl_p = os.path.join(base_dir, tmpl) if not os.path.isabs(tmpl) else tmpl
-            if os.path.exists(tmpl_p):
-                try:
-                    loc = pyautogui.locateOnScreen(tmpl_p, confidence=0.70)
-                    if loc:
-                        found_snip = True
-                        txt_ok = True
-                except Exception:
-                    pass
-            diag.append(f"   {'✅' if found_snip else 'ℹ️'} • Șablon vizual (.png): {'Găsit pe ecran' if found_snip else 'Negăsit'}")
-
-        # Informație acoperire chenar
-        box_scope_name = self.var_box_scope.get() if hasattr(self, "var_box_scope") else "Zonă Extinsă"
-        box_w = self.var_region_w.get() if hasattr(self, "var_region_w") else 350
-        box_h = self.var_region_h.get() if hasattr(self, "var_region_h") else 60
-        diag.append(f"\n4. Dimensiuni Chenar: {box_scope_name} -> {box_w}x{box_h} px")
-
-        diag.append("\n" + "-"*45)
-        if proc_ok and title_ok and txt_ok:
-            diag.append("🎉 REZULTAT: REGULA ESTE 100% VALIDĂ ȘI SE DECLANȘEAZĂ!")
+        report.append("-" * 48)
+        if match is None:
+            report.append("REZULTAT: regula NU se declanșează acum.")
+            report.append("")
+            report.append("Verificați, în ordine:")
+            report.append("  • 'Aplicație / Browser' — comparați cu procesul listat mai sus.")
+            report.append("  • 'Titlu Fereastră' — folosiți * în jurul cuvântului-cheie.")
+            report.append("  • 'Link / URL' — lăsați * dacă nu contează adresa.")
+            report.append("  • Textul căutat — trebuie să fie VIZIBIL în pagină acum.")
         else:
-            diag.append("⚠️ CE TREBUIE SĂ AJUSTAȚI:")
-            if not proc_ok:
-                diag.append(f"• Setați 'Aplicație / Browser' pe: '{selected_p}' sau 'browser'")
-            if not title_ok:
-                diag.append(f"• Setați 'Titlu Fereastră' pe: *{selected_t[:20]}* sau '*'")
-            if not txt_ok:
-                if criteria_logic == "AND":
-                    diag.append("• Nu toate criteriile au fost găsite simultan pe ecran. Schimbați pe 'OR' dacă e suficient oricare dintre ele.")
-                else:
-                    diag.append("• Niciunul dintre criteriile de căutare nu a fost găsit pe ecran. Verificați dacă textul este vizibil în pagină.")
+            window, result = match
+            report.append(f"REZULTAT: regula SE DECLANȘEAZĂ pe '{(window.get('title') or '')[:36]}'.")
+            if result.geometry:
+                x, y, w, h = result.geometry
+                anchor_text = {
+                    "uia": "ancorat pe elementul din pagină (urmărește scroll-ul)",
+                    "template": "ancorat pe șablonul imagine",
+                    "configured": "la coordonatele salvate în regulă",
+                }.get(result.anchor, result.anchor)
+                report.append(f"Chenar: {w}x{h} px la ({x}, {y}) — {anchor_text}.")
+            else:
+                report.append("Dar nu s-au putut determina coordonatele chenarului.")
+                report.append("Folosiți '🎯 Alege Interactiv de pe Ecran'.")
 
-        messagebox.showinfo("Diagnosticare Live FocusPilot", "\n".join(diag), parent=self.dialog)
+        messagebox.showinfo("Diagnosticare Live FocusPilot", "\n".join(report),
+                            parent=self.dialog)
 
     def _save_and_close(self) -> None:
         name = self.ent_name.get().strip()

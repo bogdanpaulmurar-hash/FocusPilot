@@ -4,6 +4,7 @@ FocusPilot — Config Manager
 """
 
 import os
+import copy
 import json
 import uuid
 import logging
@@ -20,7 +21,10 @@ DEFAULT_SETTINGS = {
     "start_with_windows": False,
     "hide_on_start": True,
     "keep_awake": True,
-    "poll_interval_sec": 1.0,            # Rata de verificare a ecranelor
+    # Rata de verificare a ecranelor. O scanare citește arborele de accesibilitate
+    # al ferestrei active, deci sub ~0.25s scanările se suprapun; MonitorEngine
+    # limitează oricum valoarea la intervalul [0.25, 5.0].
+    "poll_interval_sec": 0.6,
     "sound_alert": False,
     "global_enabled": True
 }
@@ -125,8 +129,8 @@ class ConfigManager:
         with self._lock:
             if not os.path.exists(self.config_path):
                 self._data = {
-                    "settings": dict(DEFAULT_SETTINGS),
-                    "rules": list(DEFAULT_SAMPLE_RULES)
+                    "settings": copy.deepcopy(DEFAULT_SETTINGS),
+                    "rules": copy.deepcopy(DEFAULT_SAMPLE_RULES)
                 }
                 self._save_unlocked()
                 return self._data
@@ -137,22 +141,22 @@ class ConfigManager:
             except Exception as exc:
                 logger.error(f"Eroare la citirea {self.config_path}: {exc}. Creez default.")
                 self._data = {
-                    "settings": dict(DEFAULT_SETTINGS),
-                    "rules": list(DEFAULT_SAMPLE_RULES)
+                    "settings": copy.deepcopy(DEFAULT_SETTINGS),
+                    "rules": copy.deepcopy(DEFAULT_SAMPLE_RULES)
                 }
                 self._save_unlocked()
                 return self._data
 
             # Asigurăm completitudinea setărilor
             if "settings" not in self._data:
-                self._data["settings"] = dict(DEFAULT_SETTINGS)
+                self._data["settings"] = copy.deepcopy(DEFAULT_SETTINGS)
             else:
                 for k, v in DEFAULT_SETTINGS.items():
                     if k not in self._data["settings"]:
                         self._data["settings"][k] = v
 
             if "rules" not in self._data:
-                self._data["rules"] = list(DEFAULT_SAMPLE_RULES)
+                self._data["rules"] = copy.deepcopy(DEFAULT_SAMPLE_RULES)
 
             return self._data
 
@@ -179,7 +183,7 @@ class ConfigManager:
     def set_setting(self, key: str, value: Any, auto_save: bool = True) -> None:
         with self._lock:
             if "settings" not in self._data:
-                self._data["settings"] = dict(DEFAULT_SETTINGS)
+                self._data["settings"] = copy.deepcopy(DEFAULT_SETTINGS)
             self._data["settings"][key] = value
             if auto_save:
                 self._save_unlocked()

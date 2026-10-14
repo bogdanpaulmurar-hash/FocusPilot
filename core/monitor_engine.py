@@ -1,9 +1,21 @@
 """
 FocusPilot — Monitor Engine
-Scanner de fundal care monitorizează ferestrele și ecranele active (suport multi-monitor 3 ecrane),
-identifică aplicațiile țintă și declanșează reperele vizuale conform regulilor active.
+
+Scanner de fundal care urmărește ferestrele de pe toate monitoarele, evaluează
+regulile active și transmite reperele vizuale de desenat.
+
+Un ciclu de scanare:
+    1. Adună ferestrele candidate (fereastra activă + ferestrele vizibile mari).
+    2. Evaluează fiecare regulă activă o singură dată pe fereastra potrivită.
+    3. Trimite către overlay doar dacă s-a schimbat ceva față de ciclul anterior.
+
+Pasul 2 face o singură trecere pe regulă. Varianta anterioară evalua regula o
+dată pentru a decide potrivirea și încă o dată pentru a calcula coordonatele,
+fiecare trecere pornind o căutare UIA completă și o potrivire de șablon pe tot
+spațiul virtual — de unde consumul de procesor și întârzierile.
 """
 
+import os
 import time
 import logging
 import threading
@@ -15,77 +27,224 @@ import win32api
 import win32con
 
 from core.config_manager import ConfigManager
-from core.rule_engine import RuleEngine
+from core.rule_engine import (
+    RuleEngine,
+    CAPABILITIES,
+    capture_window_text,
+    invalidate_snapshot_cache,
+)
 
 logger = logging.getLogger(__name__)
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+BROWSER_PROCESSES = {"msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "opera.exe"}
+
+# Ferestre de sistem care nu pot conține conținut de interes.
+IGNORED_TITLES = {
+    "Program Manager", "Windows Input Experience", "Default IME",
+    "MSCTFIME UI", "Setup", "",
+}
+IGNORED_PROCESSES = {"textinputhost.exe", "applicationframehost.exe",
+                     "searchhost.exe", "shellexperiencehost.exe"}
+
+# Dimensiunea minimă ca o fereastră să fie considerată conținut, nu decorație.
+MIN_WINDOW_W = 320
+MIN_WINDOW_H = 200
+
 
 def get_virtual_screen_bounds() -> Tuple[int, int, int, int]:
-    """Returnează coordonatele întregului spațiu virtual pe toate cele 3 monitoare (X, Y, W, H)."""
+    """Spațiul virtual care acoperă toate monitoarele: (X, Y, W, H)."""
     try:
-        x = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
-        y = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
-        w = win32api.GetSystemMetrics(win32con.SM_CXVIRTUALSCREEN)
-        h = win32api.GetSystemMetrics(win32con.SM_CYVIRTUALSCREEN)
-        return (x, y, w, h)
+        return (
+            win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN),
+            win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN),
+            win32api.GetSystemMetrics(win32con.SM_CXVIRTUALSCREEN),
+            win32api.GetSystemMetrics(win32con.SM_CYVIRTUALSCREEN),
+        )
     except Exception:
-        # Fallback monitor primar
         return (0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1))
 
 
 def get_process_name_native(pid: int) -> str:
-    """Obține numele procesului direct prin Windows API (fără a depinde de psutil)."""
+    """Numele executabilului pentru un PID, direct prin Windows API."""
     import ctypes
+    handle = None
     try:
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if h:
-            buf = ctypes.create_unicode_buffer(1024)
-            size = ctypes.c_ulong(1024)
-            res = ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
-            ctypes.windll.kernel32.CloseHandle(h)
-            if res:
-                import os
-                return os.path.basename(buf.value).lower()
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return ""
+        buf = ctypes.create_unicode_buffer(1024)
+        size = ctypes.c_ulong(1024)
+        if ctypes.windll.kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            return os.path.basename(buf.value).lower()
     except Exception:
         pass
+    finally:
+        if handle:
+            try:
+                import ctypes as _c
+                _c.windll.kernel32.CloseHandle(handle)
+            except Exception:
+                pass
     return ""
 
 
-def get_foreground_window_info() -> Optional[Dict[str, Any]]:
-    """Extrage informații complete despre fereastra aflată în prim-plan."""
+# ─────────────────────────────────────────────────────────────────────────────
+# Citirea URL-ului din browser
+# ─────────────────────────────────────────────────────────────────────────────
+
+_url_cache: Dict[int, Tuple[float, str]] = {}
+_url_lock = threading.Lock()
+URL_CACHE_TTL_SEC = 1.0
+
+
+def get_browser_url(hwnd: int, process_name: str) -> str:
+    """
+    Citește adresa din bara de adrese a browserului prin UI Automation.
+
+    Fără aceasta filtrul `url_pattern` din reguli nu putea fi evaluat niciodată,
+    deși era prezent în editor și salvat în config.json.
+    """
+    if not hwnd or process_name not in BROWSER_PROCESSES or not CAPABILITIES.uia:
+        return ""
+
+    now = time.time()
+    with _url_lock:
+        hit = _url_cache.get(hwnd)
+        if hit and (now - hit[0]) < URL_CACHE_TTL_SEC:
+            return hit[1]
+
+    url = ""
     try:
-        hwnd = win32gui.GetForegroundWindow()
+        from core.rule_engine import _ensure_com_initialized
+        _ensure_com_initialized()
+        import uiautomation as auto
+
+        try:
+            auto.SetGlobalSearchTimeout(0)
+        except Exception:
+            pass
+
+        win = auto.ControlFromHandle(hwnd)
+        if win is not None:
+            # Bara de adrese este un control Edit aflat aproape de rădăcină.
+            edit = win.EditControl(searchDepth=12)
+            if edit.Exists(0, 0):
+                try:
+                    url = edit.GetValuePattern().Value or ""
+                except Exception:
+                    url = edit.Name or ""
+    except Exception as exc:
+        logger.debug("Citirea URL eșuată pentru hwnd=%s: %s", hwnd, exc)
+
+    with _url_lock:
+        _url_cache[hwnd] = (now, url)
+        if len(_url_cache) > 32:
+            _url_cache.pop(min(_url_cache, key=lambda k: _url_cache[k][0]), None)
+    return url
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Informații despre ferestre
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _describe_window(hwnd: int, with_url: bool = True) -> Optional[Dict[str, Any]]:
+    """Adună titlul, procesul, coordonatele și (pentru browsere) URL-ul."""
+    try:
         if not hwnd or not win32gui.IsWindow(hwnd):
             return None
-
         title = win32gui.GetWindowText(hwnd)
-        if not title:
+        if not title or title in IGNORED_TITLES:
+            return None
+        if title.startswith("FocusPilot"):      # nu ne analizăm propriile ferestre
             return None
 
-        # Coordonate fereastră
-        rect = win32gui.GetWindowRect(hwnd) # (left, top, right, bottom)
-
-        # Extrage procesul
+        rect = win32gui.GetWindowRect(hwnd)
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        proc_name = get_process_name_native(pid)
+        proc = get_process_name_native(pid)
+        if proc in IGNORED_PROCESSES:
+            return None
 
         return {
             "hwnd": hwnd,
             "title": title,
-            "process_name": proc_name,
+            "process_name": proc,
             "rect": rect,
-            "extra_text": ""
+            "url": get_browser_url(hwnd, proc) if with_url else "",
+            "extra_text": "",
         }
     except Exception as exc:
-        logger.debug(f"Eroare GetForegroundWindow: {exc}")
+        logger.debug("Descrierea ferestrei %s a eșuat: %s", hwnd, exc)
         return None
 
 
-class MonitorEngine:
-    """Motorul de fundal care rulează scanarea continuă a ecranelor și declanșează alertele."""
+def get_foreground_window_info() -> Optional[Dict[str, Any]]:
+    """Informații complete despre fereastra din prim-plan."""
+    try:
+        return _describe_window(win32gui.GetForegroundWindow())
+    except Exception as exc:
+        logger.debug("GetForegroundWindow a eșuat: %s", exc)
+        return None
 
-    def __init__(self, config_manager: ConfigManager, on_cues_changed: Optional[Callable[[List[Dict[str, Any]]], None]] = None):
+
+def enumerate_content_windows(limit: int = 12) -> List[Dict[str, Any]]:
+    """
+    Ferestrele vizibile suficient de mari ca să conțină conținut de lucru,
+    de pe toate monitoarele, cea activă prima.
+
+    Pe un setup cu 3 ecrane utilizatorul se uită la un monitor în timp ce
+    lucrează pe altul. Varianta anterioară analiza doar fereastra activă, deci o
+    regulă pentru o pagină de pe al doilea monitor nu se declanșa niciodată.
+    """
+    found: List[Dict[str, Any]] = []
+    seen = set()
+
+    fg = get_foreground_window_info()
+    if fg:
+        found.append(fg)
+        seen.add(fg["hwnd"])
+
+    def _collect(hwnd, _):
+        if len(found) >= limit:
+            return True
+        try:
+            if hwnd in seen or not win32gui.IsWindowVisible(hwnd):
+                return True
+            if win32gui.IsIconic(hwnd):          # minimizată: nimic vizibil
+                return True
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            if (right - left) < MIN_WINDOW_W or (bottom - top) < MIN_WINDOW_H:
+                return True
+            # URL-ul se citește doar pentru fereastra activă: e un apel UIA
+            # în plus pe fereastră și rar necesar pentru cele din fundal.
+            info = _describe_window(hwnd, with_url=False)
+            if info:
+                found.append(info)
+                seen.add(hwnd)
+        except Exception:
+            pass
+        return True
+
+    try:
+        win32gui.EnumWindows(_collect, None)
+    except Exception as exc:
+        logger.debug("EnumWindows a eșuat: %s", exc)
+
+    return found
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Motorul de monitorizare
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MonitorEngine:
+    """Firul de fundal care scanează ecranele și declanșează reperele vizuale."""
+
+    def __init__(self, config_manager: ConfigManager,
+                 on_cues_changed: Optional[Callable[[List[Dict[str, Any]]], None]] = None):
         self.config_manager = config_manager
         self.on_cues_changed = on_cues_changed
 
@@ -94,23 +253,25 @@ class MonitorEngine:
         self._paused = False
         self._lock = threading.Lock()
 
-        # Cache pentru a nu redesena inutil când nu s-a schimbat starea
-        self._last_active_rules_ids: List[str] = []
+        self._last_cues_signature = ""
         self._rule_start_times: Dict[str, float] = {}
+        self._last_reason: Dict[str, str] = {}
+        self._warned_missing_deps = False
+
+    # ── Ciclu de viață ───────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Pornește firul de execuție al scannerului."""
         with self._lock:
             if self._running:
                 return
             self._running = True
             self._paused = not self.config_manager.get_setting("global_enabled", True)
-            self._thread = threading.Thread(target=self._monitor_loop, daemon=True, name="FocusPilotMonitor")
+            self._thread = threading.Thread(target=self._monitor_loop, daemon=True,
+                                            name="FocusPilotMonitor")
             self._thread.start()
-            logger.info("MonitorEngine pornit.")
+        logger.info("MonitorEngine pornit.")
 
     def stop(self) -> None:
-        """Oprește scannerul."""
         with self._lock:
             self._running = False
         if self._thread and self._thread.is_alive():
@@ -118,123 +279,191 @@ class MonitorEngine:
         logger.info("MonitorEngine oprit.")
 
     def pause(self) -> None:
-        """Pauzează monitorizarea."""
         with self._lock:
             self._paused = True
         self._clear_cues()
         logger.info("MonitorEngine pauzat.")
 
     def resume(self) -> None:
-        """Reia monitorizarea."""
         with self._lock:
             self._paused = False
+        # Regulile sau ferestrele se pot fi schimbat în pauză.
+        invalidate_snapshot_cache()
+        self._rule_start_times.clear()
         logger.info("MonitorEngine reluat.")
 
     def is_paused(self) -> bool:
         with self._lock:
             return self._paused
 
+    def notify_rules_changed(self) -> None:
+        """Apelat când utilizatorul salvează o regulă: repornește evaluarea curată."""
+        invalidate_snapshot_cache()
+        self._rule_start_times.clear()
+        self._last_reason.clear()
+        self._last_cues_signature = ""
+        logger.info("MonitorEngine: reguli reîncărcate.")
+
+    def last_reason_for(self, rule_id: str) -> str:
+        """Ultima explicație de evaluare pentru o regulă, pentru diagnostic."""
+        return self._last_reason.get(rule_id, "")
+
+    # ── Bucla de scanare ─────────────────────────────────────────────────────
+
     def _clear_cues(self) -> None:
-        self._last_active_rules_ids = []
-        self._last_cues_sig = ""
+        self._last_cues_signature = ""
         if self.on_cues_changed:
             self.on_cues_changed([])
 
+    def _read_poll_interval(self) -> float:
+        """Intervalul de scanare, limitat ca să nu sature procesorul."""
+        try:
+            value = float(self.config_manager.get_setting("poll_interval_sec", 0.6))
+        except (TypeError, ValueError):
+            value = 0.6
+        # Sub 0.25s o scanare nu are timp să se termine înainte de următoarea.
+        return min(5.0, max(0.25, value))
+
     def _monitor_loop(self) -> None:
-        """Bucla principală de scanare periodică."""
+        # Inițializat ÎNAINTE de try: în varianta anterioară `poll_interval` era
+        # definit în interiorul blocului try, iar `time.sleep(poll_interval)` de
+        # la finalul buclei era în afara lui. O excepție la prima iterație lăsa
+        # numele nelegat, iar UnboundLocalError — neprins — omora firul de
+        # execuție în silence: monitorizarea se oprea fără niciun mesaj.
+        poll_interval = self._read_poll_interval()
+
         while self._running:
             try:
-                # Interval rapid de răspuns pentru dispariție instantanee la schimbarea ferestrei (100ms)
-                poll_interval = float(self.config_manager.get_setting("poll_interval_sec", 0.15))
-                if poll_interval < 0.1:
-                    poll_interval = 0.1
+                poll_interval = self._read_poll_interval()
 
                 if self._paused or not self.config_manager.get_setting("global_enabled", True):
                     time.sleep(poll_interval)
                     continue
 
-                # 1. Extrage fereastra activă curentă
-                win_info = get_foreground_window_info()
-                if not win_info:
-                    if self._last_active_rules_ids or getattr(self, "_last_cues_sig", ""):
-                        self._clear_cues()
-                    self._rule_start_times.clear()
-                    time.sleep(poll_interval)
-                    continue
-
-                now = time.time()
-                # 2. Evaluează toate regulile active
-                rules = self.config_manager.get_rules()
-                matched_cues: List[Dict[str, Any]] = []
-                matched_ids: List[str] = []
-
-                virt_bounds = get_virtual_screen_bounds()
-
-                for rule in rules:
-                    if not rule.get("enabled", True):
-                        continue
-
-                    rule_id = rule["id"]
-                    is_match = RuleEngine.evaluate_rule(rule, win_info)
-                    if is_match:
-                        if rule_id not in self._rule_start_times:
-                            self._rule_start_times[rule_id] = now
-                            logger.info(f"[MONITOR] Regula '{rule.get('name')}' declanșată.")
-
-                        elapsed = now - self._rule_start_times[rule_id]
-                        steps = rule.get("steps", [])
-
-                        active_step = None
-                        visual_to_use = dict(rule.get("visual_cue", {}))
-
-                        if steps:
-                            active_step = RuleEngine.get_active_step_for_rule(rule, elapsed)
-                            if not active_step:
-                                # Toate etapele din pachetul secvențial s-au terminat
-                                continue
-                            # Îmbină proprietățile vizuale ale pasului activ
-                            if "visual_cue" in active_step:
-                                visual_to_use.update(active_step["visual_cue"])
-                            if "badge_text" in active_step:
-                                visual_to_use["badge_text"] = active_step["badge_text"]
-                            if "arrow_direction" in active_step:
-                                visual_to_use["arrow_direction"] = active_step["arrow_direction"]
-                            if "arrow_color" in active_step:
-                                visual_to_use["arrow_color"] = active_step["arrow_color"]
-                        else:
-                            # Gestionare durată afișare standard (duration_sec)
-                            dur = float(rule.get("visual_cue", {}).get("duration_sec", 0))
-                            if dur > 0 and elapsed > dur:
-                                continue
-
-                        cue_geo = RuleEngine.calculate_cue_geometry(rule, win_info, virt_bounds, active_step=active_step)
-                        if cue_geo is None:
-                            continue
-
-                        matched_ids.append(rule_id)
-                        rule_disp_name = f"{rule['name']} (Pas {active_step['step_index']}/{active_step['total_steps']}: {active_step.get('name', '')})" if active_step else rule["name"]
-                        cue_data = {
-                            "rule_id": rule_id,
-                            "rule_name": rule_disp_name,
-                            "geometry": cue_geo,  # (x, y, w, h)
-                            "visual_cue": visual_to_use,
-                            "window_title": win_info["title"]
-                        }
-                        matched_cues.append(cue_data)
-                    else:
-                        # Resetează timerul când fereastra nu se mai potrivește
-                        if rule_id in self._rule_start_times:
-                            del self._rule_start_times[rule_id]
-
-                # 3. Notifică dacă s-au schimbat regulile sau coordonatele (la scroll în pagină!)
-                cues_signature = str([(c["rule_id"], c["geometry"]) for c in matched_cues])
-                if cues_signature != getattr(self, "_last_cues_sig", ""):
-                    self._last_cues_sig = cues_signature
-                    self._last_active_rules_ids = matched_ids
-                    if self.on_cues_changed:
-                        self.on_cues_changed(matched_cues)
+                self._warn_missing_dependencies_once()
+                self._scan_once()
 
             except Exception as exc:
-                logger.error(f"Eroare în bucla MonitorEngine: {exc}")
+                logger.exception("Eroare în bucla MonitorEngine: %s", exc)
 
             time.sleep(poll_interval)
+
+    def _warn_missing_dependencies_once(self) -> None:
+        if self._warned_missing_deps:
+            return
+        self._warned_missing_deps = True
+        missing = CAPABILITIES.missing()
+        if missing:
+            logger.error(
+                "FocusPilot rulează cu detecție REDUSĂ: lipsesc pachetele %s. "
+                "Rulați:  pip install %s",
+                ", ".join(missing), " ".join(missing)
+            )
+
+    def _scan_once(self) -> None:
+        """Un ciclu complet de evaluare a regulilor."""
+        rules = [r for r in self.config_manager.get_rules() if r.get("enabled", True)]
+        if not rules:
+            if self._last_cues_signature:
+                self._clear_cues()
+            self._rule_start_times.clear()
+            return
+
+        windows = enumerate_content_windows()
+        if not windows:
+            if self._last_cues_signature:
+                self._clear_cues()
+            self._rule_start_times.clear()
+            return
+
+        virt_bounds = get_virtual_screen_bounds()
+        now = time.time()
+        cues: List[Dict[str, Any]] = []
+
+        for rule in rules:
+            rule_id = rule.get("id")
+            if not rule_id:
+                logger.warning("Regulă fără 'id', ignorată: %s", rule.get("name"))
+                continue
+
+            cue = self._evaluate_rule_against_windows(rule, rule_id, windows,
+                                                      virt_bounds, now)
+            if cue:
+                cues.append(cue)
+
+        # Trimitem doar la schimbare, dar semnătura include coordonatele, ca
+        # reperul să urmărească elementul când utilizatorul derulează pagina.
+        signature = repr([(c["rule_id"], c["geometry"]) for c in cues])
+        if signature != self._last_cues_signature:
+            self._last_cues_signature = signature
+            if self.on_cues_changed:
+                self.on_cues_changed(cues)
+
+    def _evaluate_rule_against_windows(self, rule: Dict[str, Any], rule_id: str,
+                                       windows: List[Dict[str, Any]],
+                                       virt_bounds: Tuple[int, int, int, int],
+                                       now: float) -> Optional[Dict[str, Any]]:
+        """Evaluează o regulă pe ferestrele candidate și întoarce reperul, dacă e cazul."""
+        steps = rule.get("steps") or []
+        started_at = self._rule_start_times.get(rule_id)
+        elapsed = (now - started_at) if started_at is not None else 0.0
+
+        active_step = RuleEngine.get_active_step_for_rule(rule, elapsed) if steps else None
+        # Succesiunea s-a consumat, dar continuăm să verificăm potrivirea: altfel
+        # cronometrul nu s-ar reseta niciodată și succesiunea nu ar mai putea
+        # reporni când utilizatorul revine pe fereastră.
+        sequence_done = bool(steps) and active_step is None and started_at is not None
+
+        for win_info in windows:
+            result = RuleEngine.evaluate(rule, win_info, virt_bounds,
+                                         active_step=active_step, base_dir=BASE_DIR)
+
+            if not result.matched:
+                continue
+
+            # Prima potrivire: pornim cronometrul duratei de afișare.
+            if started_at is None:
+                self._rule_start_times[rule_id] = now
+                elapsed = 0.0
+                logger.info("[REGULĂ] '%s' declanșată pe '%s' — %s",
+                            rule.get("name"), win_info["title"][:50], result.reason)
+
+            if result.reason != self._last_reason.get(rule_id):
+                self._last_reason[rule_id] = result.reason
+
+            if sequence_done:
+                return None
+
+            # Durata de afișare se aplică doar regulilor fără succesiune.
+            if not steps:
+                duration = RuleEngine._as_float(
+                    (rule.get("visual_cue") or {}).get("duration_sec", 0), 0.0)
+                if duration > 0 and elapsed > duration:
+                    return None
+
+            if result.geometry is None:
+                return None
+
+            visual = dict(rule.get("visual_cue") or {})
+            display_name = rule.get("name", "Regulă")
+            if active_step:
+                visual.update({k: v for k, v in (active_step.get("visual_cue") or {}).items()})
+                for key in ("badge_text", "arrow_direction", "arrow_color"):
+                    if key in active_step:
+                        visual[key] = active_step[key]
+                display_name = (f"{display_name} (Pas {active_step['step_index']}"
+                                f"/{active_step['total_steps']}: {active_step.get('name', '')})")
+
+            return {
+                "rule_id": rule_id,
+                "rule_name": display_name,
+                "geometry": result.geometry,
+                "visual_cue": visual,
+                "window_title": win_info["title"],
+                "anchor": result.anchor,
+            }
+
+        # Nicio fereastră nu se potrivește: cronometrul repornește la revenire.
+        if rule_id in self._rule_start_times:
+            del self._rule_start_times[rule_id]
+        return None
