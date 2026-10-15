@@ -190,6 +190,17 @@ class UiaSnapshot(NamedTuple):
 _snapshot_cache: Dict[int, Tuple[Tuple[int, int, int, int], UiaSnapshot]] = {}
 _snapshot_lock = threading.Lock()
 
+# (hwnd, secunde, elemente, trunchiat) pentru fiecare citire reală, nu din cache.
+_capture_stats: List[Tuple[int, float, int, bool]] = []
+
+
+def pop_capture_stats() -> List[Tuple[int, float, int, bool]]:
+    """Duratele citirilor UIA de la ultimul apel, pentru jurnalul de performanță."""
+    with _snapshot_lock:
+        stats = list(_capture_stats)
+        _capture_stats.clear()
+    return stats
+
 
 def _window_rect(hwnd: int) -> Optional[Tuple[int, int, int, int]]:
     try:
@@ -299,6 +310,8 @@ def capture_window_text(hwnd: int, force: bool = False) -> Optional[UiaSnapshot]
     snap = UiaSnapshot(items=items, truncated=truncated, captured_at=now,
                        window_area=max(0, (win_r - win_l) * (win_b - win_t)))
     with _snapshot_lock:
+        _capture_stats.append((hwnd, time.time() - now, len(items), truncated))
+        del _capture_stats[:-50]
         _snapshot_cache[hwnd] = (rect, snap)
         if len(_snapshot_cache) > 24:          # nu lăsăm cache-ul să crească
             oldest = min(_snapshot_cache.items(), key=lambda kv: kv[1][1].captured_at)

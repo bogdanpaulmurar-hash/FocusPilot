@@ -34,6 +34,7 @@ from core.rule_engine import (
     CAPABILITIES,
     capture_window_text,
     invalidate_snapshot_cache,
+    pop_capture_stats,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 OWN_PID = os.getpid()
+SLOW_CYCLE_SEC = 1.0
 
 BROWSER_PROCESSES = {"msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
@@ -333,6 +335,7 @@ class MonitorEngine:
         self._rule_start_times: Dict[str, float] = {}
         self._last_reason: Dict[str, str] = {}
         self._warned_missing_deps = False
+        self._last_foreground: Optional[int] = None
 
     # ── Ciclu de viață ───────────────────────────────────────────────────────
 
@@ -452,9 +455,18 @@ class MonitorEngine:
             self._rule_start_times.clear()
             return
 
+        # Ora schimbării ferestrei active: diferența până la „[REGULĂ] declanșată"
+        # este întârzierea reală văzută de utilizator.
+        foreground = windows[0]["hwnd"]
+        if foreground != self._last_foreground:
+            self._last_foreground = foreground
+            logger.info("[PERF] Prim-plan: %s:%s", windows[0].get("process_name"),
+                        windows[0]["title"][:50])
+
         virt_bounds = get_virtual_screen_bounds()
         now = time.time()
         cues: List[Dict[str, Any]] = []
+        pop_capture_stats()
 
         for rule in rules:
             rule_id = rule.get("id")
@@ -467,6 +479,8 @@ class MonitorEngine:
             if cue:
                 cues.append(cue)
 
+        self._log_slow_cycle(time.time() - now, windows, cues)
+
         # Trimitem doar la schimbare, dar semnătura include coordonatele, ca
         # reperul să urmărească elementul când utilizatorul derulează pagina.
         signature = repr([(c["rule_id"], c["geometry"],
@@ -476,6 +490,20 @@ class MonitorEngine:
             self._last_cues_signature = signature
             if self.on_cues_changed:
                 self.on_cues_changed(cues)
+
+    @staticmethod
+    def _log_slow_cycle(elapsed: float, windows: List[Dict[str, Any]],
+                        cues: List[Dict[str, Any]]) -> None:
+        """O linie de jurnal pentru fiecare scanare mai lentă de o secundă."""
+        stats = pop_capture_stats()
+        if elapsed < SLOW_CYCLE_SEC:
+            return
+        titles = {w["hwnd"]: f"{w.get('process_name')}:{w['title'][:30]}" for w in windows}
+        reads = ", ".join(
+            f"[{titles.get(h, h)} {sec:.2f}s {n} elem{' TRUNCHIAT' if trunc else ''}]"
+            for h, sec, n, trunc in stats) or "fără citiri UIA"
+        logger.info("[PERF] Scanare %.2fs, %d ferestre, %d repere. Citiri: %s",
+                    elapsed, len(windows), len(cues), reads)
 
     def _evaluate_rule_against_windows(self, rule: Dict[str, Any], rule_id: str,
                                        windows: List[Dict[str, Any]],
