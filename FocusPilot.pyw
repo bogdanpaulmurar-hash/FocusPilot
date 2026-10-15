@@ -69,7 +69,7 @@ from core.config_manager import ConfigManager                       # noqa: E402
 from core.rule_engine import RuleEngine, CAPABILITIES               # noqa: E402
 from core.monitor_engine import (                                   # noqa: E402
     MonitorEngine, get_foreground_window_info, get_virtual_screen_bounds,
-    enumerate_content_windows,
+    enumerate_content_windows, visible_part,
 )
 from core.keep_awake import enable_keep_awake, disable_keep_awake   # noqa: E402
 from ui.overlay_cue import MultiScreenOverlay                       # noqa: E402
@@ -288,9 +288,13 @@ class FocusPilotApp:
         virtual = get_virtual_screen_bounds()
         has_text = bool(str(rule.get("trigger", {}).get("search_text", "") or "").strip())
 
-        # 1. Ținta reală, dacă e deschisă pe oricare monitor.
+        # 1. Ținta reală, dacă e deschisă pe oricare monitor și nu e acoperită.
+        hidden_on = ""
         for window in enumerate_content_windows():
             result = RuleEngine.evaluate(rule, window, virtual, base_dir=BASE_DIR)
+            if result.drawable and visible_part(result, window["hwnd"]) is None:
+                hidden_on = hidden_on or window["title"][:50]
+                continue
             if result.drawable:
                 note = f"găsit pe '{window['title'][:40]}'"
                 warning = ""
@@ -303,10 +307,16 @@ class FocusPilotApp:
                         "Folosiți „Alege Interactiv de pe Ecran” pentru o poziție exactă.")
                 return result.geometry, note, warning
 
-        not_found = ("Ținta regulii NU a fost găsită pe nicio fereastră deschisă.\n\n"
-                     "Chenarul este afișat doar demonstrativ ({}).\n\n"
-                     "Folosiți „Diagnosticare Live” ca să vedeți ce filtru "
-                     "sau criteriu nu se potrivește.")
+        if hidden_on:
+            not_found = (f"Ținta a fost găsită pe „{hidden_on}”, dar zona ei este "
+                         "acoperită de altă fereastră, deci nu se marchează.\n\n"
+                         "Aduceți fereastra în față și testați din nou.\n\n"
+                         "Chenarul este afișat doar demonstrativ ({}).")
+        else:
+            not_found = ("Ținta regulii NU a fost găsită pe nicio fereastră deschisă.\n\n"
+                         "Chenarul este afișat doar demonstrativ ({}).\n\n"
+                         "Folosiți „Diagnosticare Live” ca să vedeți ce filtru "
+                         "sau criteriu nu se potrivește.")
 
         # 2. Coordonatele salvate la selecția interactivă.
         region = rule.get("region", {})

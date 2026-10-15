@@ -17,8 +17,10 @@ spațiul virtual — de unde consumul de procesor și întârzierile.
 
 import os
 import time
+import ctypes
 import logging
 import threading
+from ctypes import wintypes
 from typing import Dict, Any, List, Optional, Callable, Tuple
 
 import win32gui
@@ -192,6 +194,76 @@ def get_foreground_window_info() -> Optional[Dict[str, Any]]:
     except Exception as exc:
         logger.debug("GetForegroundWindow a eșuat: %s", exc)
         return None
+
+
+GW_HWNDPREV = 3
+DWMWA_EXTENDED_FRAME_BOUNDS = 9
+DWMWA_CLOAKED = 14
+
+
+def _dwm_attr(hwnd: int, attr: int, value) -> bool:
+    try:
+        return ctypes.windll.dwmapi.DwmGetWindowAttribute(
+            wintypes.HWND(hwnd), attr, ctypes.byref(value), ctypes.sizeof(value)) == 0
+    except Exception:
+        return False
+
+
+def _covers(hwnd: int, px: int, py: int) -> bool:
+    """True dacă fereastra `hwnd` e afișată și conține punctul fizic (px, py)."""
+    if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
+        return False
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    if pid == OWN_PID:                               # marcajele și editorul nostru
+        return False
+    if win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TRANSPARENT:
+        return False
+    cloaked = wintypes.DWORD(0)                      # ferestre UWP ascunse de DWM
+    if _dwm_attr(hwnd, DWMWA_CLOAKED, cloaked) and cloaked.value:
+        return False
+    # Limitele DWM sunt în pixeli fizici, ca UIA, și exclud marginea invizibilă.
+    box = wintypes.RECT()
+    if not _dwm_attr(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, box):
+        return False
+    return box.left <= px < box.right and box.top <= py < box.bottom
+
+
+def is_rect_on_top(hwnd: int, rect: Optional[Tuple[int, int, int, int]]) -> bool:
+    """
+    True dacă centrul lui `rect` nu e acoperit de o fereastră aflată deasupra
+    lui `hwnd`. Textul unei ferestre din spate e citibil prin UI Automation,
+    dar un marcaj desenat pentru el ar apărea peste fereastra din față.
+    """
+    if not hwnd or not rect:
+        return True
+    x, y, w, h = rect
+    px, py = int(x + w // 2), int(y + h // 2)
+    try:
+        above = win32gui.GetWindow(hwnd, GW_HWNDPREV)
+        while above:
+            if _covers(above, px, py):
+                logger.debug("Marcaj ascuns: '%s' acoperă ținta.",
+                             win32gui.GetWindowText(above)[:50])
+                return False
+            above = win32gui.GetWindow(above, GW_HWNDPREV)
+    except Exception as exc:
+        logger.debug("Verificarea vizibilității a eșuat: %s", exc)
+    return True
+
+
+def visible_part(result: Any, hwnd: int) -> Optional[Tuple[Any, Tuple[Dict[str, Any], ...]]]:
+    """
+    (geometrie, marcaje) păstrând doar ce e vizibil pe ecran, sau None dacă
+    nimic din potrivire nu se vede.
+    """
+    if result.marks:
+        marks = tuple(m for m in result.marks if is_rect_on_top(hwnd, m.get("rect")))
+        if not marks:
+            return None
+        return marks[0]["rect"], marks
+    if result.geometry is not None and not is_rect_on_top(hwnd, result.geometry):
+        return None
+    return result.geometry, ()
 
 
 def enumerate_content_windows(limit: int = 12) -> List[Dict[str, Any]]:
@@ -427,6 +499,13 @@ class MonitorEngine:
             if not result.matched:
                 continue
 
+            # Potrivirea dintr-o fereastră acoperită nu se marchează: s-ar
+            # desena peste fereastra din față.
+            shown = visible_part(result, win_info["hwnd"])
+            if shown is None:
+                continue
+            geometry, marks = shown
+
             # Prima potrivire: pornim cronometrul duratei de afișare.
             if started_at is None:
                 self._rule_start_times[rule_id] = now
@@ -447,7 +526,7 @@ class MonitorEngine:
                 if duration > 0 and elapsed > duration:
                     return None
 
-            if result.geometry is None:
+            if geometry is None:
                 return None
 
             visual = dict(rule.get("visual_cue") or {})
@@ -463,13 +542,13 @@ class MonitorEngine:
             return {
                 "rule_id": rule_id,
                 "rule_name": display_name,
-                "geometry": result.geometry,
+                "geometry": geometry,
                 "visual_cue": visual,
                 "window_title": win_info["title"],
                 "anchor": result.anchor,
                 # Regulile cu câmpuri și condiții pot marca mai multe locuri
                 # simultan, fiecare cu propria formă și culoare.
-                "marks": list(result.marks),
+                "marks": list(marks),
             }
 
         # Nicio fereastră nu se potrivește: cronometrul repornește la revenire.
