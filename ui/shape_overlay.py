@@ -62,16 +62,25 @@ def make_passthrough(widget: tk.Misc) -> None:
     `WS_EX_TRANSPARENT` singur nu oprește testarea la click pe Windows: are
     nevoie și de `WS_EX_LAYERED`. `WS_EX_NOACTIVATE` împiedică fereastra să
     mute focusul din câmpul în care scrie utilizatorul.
+
+    Atributele layered puse de Tk (culoarea-cheie pentru săgeți și cercuri,
+    alfa pentru highlight) se păstrează: suprascrierea lor cu alfa simplu
+    făcea fundalul săgeții vizibil, negru. Se aplică după afișare, pentru că Tk
+    resetează stilurile ferestrei la afișare și la schimbarea transparenței.
     """
     hwnd = _hwnd_of(widget)
     if not hwnd:
         return
     try:
         style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-        style |= (win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
-                  | win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_NOACTIVATE)
-        win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, style)
-        ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA)
+        already_layered = bool(style & win32con.WS_EX_LAYERED)
+        wanted = style | (win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT
+                          | win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_NOACTIVATE)
+        if wanted != style:
+            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, wanted)
+        if not already_layered:
+            # O fereastră layered fără atribute nu se desenează deloc.
+            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA)
     except Exception as exc:
         logger.debug("Stilul click-through nu s-a putut aplica: %s", exc)
 
@@ -98,7 +107,7 @@ class ShapeWindow:
         self._chroma = False
         self._alpha: Optional[float] = None
         self._visible = False
-        make_passthrough(self.window)
+        self._styled = False
 
     # ── Comutarea tehnicii ───────────────────────────────────────────────────
 
@@ -136,6 +145,7 @@ class ShapeWindow:
         try:
             self.window.attributes("-transparentcolor", CHROMA if enabled else "")
             self._chroma = enabled
+            self._styled = False
         except Exception:
             pass
 
@@ -146,6 +156,7 @@ class ShapeWindow:
         try:
             self.window.attributes("-alpha", target)
             self._alpha = target
+            self._styled = False
         except Exception:
             pass
 
@@ -227,6 +238,11 @@ class ShapeWindow:
         if not self._visible:
             self.window.deiconify()
             self._visible = True
+            self._styled = False
+        if not self._styled:
+            self.window.update_idletasks()
+            make_passthrough(self.window)
+            self._styled = True
 
     def _safe_shape(self, shape: str, box, color: str, thickness: int) -> None:
         creator = getattr(self.canvas, f"create_{shape}")
