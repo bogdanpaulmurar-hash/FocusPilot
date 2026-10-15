@@ -32,11 +32,42 @@ recunoaștere optică. Comparațiile numerice lucrează pe numere reale.
 
 import re
 import logging
+import unicodedata
 from typing import Dict, Any, List, Optional, Tuple, NamedTuple
 
 logger = logging.getLogger(__name__)
 
 Rect = Tuple[int, int, int, int]        # (x, y, w, h) pe ecranul virtual
+
+
+def fold_text(text: str, case_sensitive: bool = False) -> str:
+    """
+    Forma de comparație a unui text. Fără sensibilitate la majuscule se ignoră
+    și diacriticele: „Aplicatia porneste" găsește „Aplicația pornește".
+    """
+    if case_sensitive:
+        return text
+    decomposed = unicodedata.normalize("NFKD", text.lower())
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+def best_text_match(items: List[Tuple[str, Rect]], needle: str,
+                    case_sensitive: bool = False,
+                    window_area: int = 0) -> Optional[Tuple[str, Rect]]:
+    """
+    Elementul cel mai specific care conține `needle`.
+
+    Fereastra și documentul paginii poartă ca nume titlul, deci „conțin" orice
+    text din titlu; primul găsit ar încadra tot ecranul. Elementele cât jumătate
+    din fereastră sunt containere și se sar; dintre restul câștigă cel mai mic.
+    """
+    probe = fold_text(needle, case_sensitive)
+    matches = [(t, r) for t, r in items if probe in fold_text(t, case_sensitive)]
+    if window_area > 0:
+        matches = [(t, r) for t, r in matches if r[2] * r[3] < window_area * 0.5]
+    if not matches:
+        return None
+    return min(matches, key=lambda m: m[1][2] * m[1][3])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -155,8 +186,8 @@ def compare(value: Optional[str], operator: str, expected: str,
             logger.warning("Expresie regulată invalidă %r: %s", wanted, exc)
             return False
 
-    probe = text if case_sensitive else text.lower()
-    target = wanted if case_sensitive else wanted.lower()
+    probe = fold_text(text, case_sensitive)
+    target = fold_text(wanted, case_sensitive)
 
     if operator == "equals":
         return probe == target
@@ -242,13 +273,10 @@ def _read_near_label(name: str, locator: Dict[str, Any], snapshot) -> ProbeReadi
     case_sensitive = bool(locator.get("case_sensitive", False))
     skip = max(0, int(locator.get("skip", 0) or 0))
 
-    label_rect = None
-    probe_label = label if case_sensitive else label.lower()
-    for text, rect in snapshot.items:
-        haystack = text if case_sensitive else text.lower()
-        if probe_label in haystack:
-            label_rect = rect
-            break
+    probe_label = fold_text(label, case_sensitive)
+    best = best_text_match(snapshot.items, label, case_sensitive,
+                           getattr(snapshot, "window_area", 0))
+    label_rect = best[1] if best else None
 
     if label_rect is None:
         return ProbeReading(name, None, None,
@@ -287,7 +315,7 @@ def _read_near_label(name: str, locator: Dict[str, Any], snapshot) -> ProbeReadi
                 continue
 
         # Un element care conține eticheta e containerul, nu valoarea.
-        inner = text if case_sensitive else text.lower()
+        inner = fold_text(text, case_sensitive)
         if probe_label in inner:
             continue
         # Cel mai apropiat câștigă; la distanță egală, cel mai bine aliniat.

@@ -91,6 +91,23 @@ class EngineTestCase(unittest.TestCase):
 # Condiția de text — era citită din config dar niciodată aplicată
 # ─────────────────────────────────────────────────────────────────────────────
 
+class TestSnapshotFind(unittest.TestCase):
+
+    def test_window_sized_containers_are_skipped(self):
+        """Fereastra poartă titlul ca nume; încadrarea ei acoperea tot ecranul."""
+        snap = UiaSnapshot(items=[
+            ("DIiH - Calendar - Google Chrome", (0, 0, 1920, 1040)),
+            ("DIiH - Calendar - Apps Script", (0, 139, 1920, 895)),
+            ("DIiH - Calendar - Apps Script", (781, 0, 146, 47)),
+        ], truncated=False, captured_at=1e9, window_area=1920 * 1040)
+        self.assertEqual(snap.find("DIiH - Calendar", False), (781, 0, 146, 47))
+
+    def test_only_containers_means_not_located(self):
+        snap = UiaSnapshot(items=[("Titlu pagină", (0, 0, 1920, 1040))],
+                           truncated=False, captured_at=1e9, window_area=1920 * 1040)
+        self.assertIsNone(snap.find("Titlu", False))
+
+
 class TestTextConditions(unittest.TestCase):
 
     def test_contains(self):
@@ -109,6 +126,11 @@ class TestTextConditions(unittest.TestCase):
     def test_starts_with(self):
         self.assertTrue(RuleEngine.text_matches("Please", "Please change category", "starts_with"))
         self.assertFalse(RuleEngine.text_matches("change", "Please change category", "starts_with"))
+
+    def test_diacritics_ignored_unless_case_sensitive(self):
+        self.assertTrue(RuleEngine.text_matches("Aplicatia porneste", "Aplicația pornește de fapt", "starts_with"))
+        self.assertTrue(RuleEngine.text_matches("aplicația", "APLICATIA", "equals"))
+        self.assertFalse(RuleEngine.text_matches("Aplicatia", "Aplicația", "contains", case_sensitive=True))
 
     def test_constellation_requires_every_word(self):
         page = "ticket merged and waiting for approval"

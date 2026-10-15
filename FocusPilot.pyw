@@ -258,8 +258,14 @@ class FocusPilotApp:
         logger.info("[TEST] Testare vizuală pentru '%s'.", name)
 
         try:
-            geometry, note = self._locate_test_geometry(rule)
+            geometry, note, warning = self._locate_test_geometry(rule)
             logger.info("[TEST] '%s': %s -> %s", name, note, geometry)
+            if warning:
+                # Fără avertisment, un chenar desenat demonstrativ arată ca o
+                # potrivire reală, plasată greșit.
+                from tkinter import messagebox
+                self.root.after(100, lambda: messagebox.showwarning(
+                    "FocusPilot — Test", warning))
 
             self.overlay.update_cues([{
                 "rule_id": rule.get("id", "test"),
@@ -278,14 +284,29 @@ class FocusPilotApp:
             logger.exception("[TEST] Testarea regulii '%s' a eșuat: %s", name, exc)
 
     def _locate_test_geometry(self, rule: Dict[str, Any]):
-        """(geometrie, explicație) pentru testul unei reguli."""
+        """(geometrie, explicație, avertisment sau "") pentru testul unei reguli."""
         virtual = get_virtual_screen_bounds()
+        has_text = bool(str(rule.get("trigger", {}).get("search_text", "") or "").strip())
 
         # 1. Ținta reală, dacă e deschisă pe oricare monitor.
         for window in enumerate_content_windows():
             result = RuleEngine.evaluate(rule, window, virtual, base_dir=BASE_DIR)
             if result.drawable:
-                return result.geometry, f"găsit pe '{window['title'][:40]}'"
+                note = f"găsit pe '{window['title'][:40]}'"
+                warning = ""
+                if has_text and result.anchor == "configured":
+                    warning = (
+                        f"Textul a fost găsit pe „{window['title'][:50]}”, dar poziția "
+                        "lui pe ecran nu a putut fi determinată (apare doar în titlu "
+                        "sau într-un element care nu expune text).\n\n"
+                        "Chenarul e desenat la poziția configurată în secțiunea 4. "
+                        "Folosiți „Alege Interactiv de pe Ecran” pentru o poziție exactă.")
+                return result.geometry, note, warning
+
+        not_found = ("Ținta regulii NU a fost găsită pe nicio fereastră deschisă.\n\n"
+                     "Chenarul este afișat doar demonstrativ ({}).\n\n"
+                     "Folosiți „Diagnosticare Live” ca să vedeți ce filtru "
+                     "sau criteriu nu se potrivește.")
 
         # 2. Coordonatele salvate la selecția interactivă.
         region = rule.get("region", {})
@@ -294,13 +315,15 @@ class FocusPilotApp:
         width = RuleEngine._as_int(region.get("width", 360), 360)
         height = RuleEngine._as_int(region.get("height", 60), 60)
         if abs_x or abs_y:
-            return (abs_x, abs_y, width, height), "ținta nu e pe ecran; coordonate salvate"
+            note = "la coordonatele salvate"
+            return (abs_x, abs_y, width, height), note, not_found.format(note)
 
         # 3. Centrul ecranului principal.
         screen_w = self.root.winfo_screenwidth() or 1920
         screen_h = self.root.winfo_screenheight() or 1080
+        note = "în centrul ecranului"
         return ((screen_w - width) // 2, (screen_h - height) // 2, width, height), \
-               "fără coordonate salvate; centrat pe ecran"
+               note, not_found.format(note)
 
     def _hide_test_cue(self) -> None:
         self._test_hide_job = None

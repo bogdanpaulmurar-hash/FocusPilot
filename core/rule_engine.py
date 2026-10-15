@@ -175,15 +175,13 @@ class UiaSnapshot(NamedTuple):
     items: List[Tuple[str, Tuple[int, int, int, int]]]  # (text, (x, y, w, h))
     truncated: bool          # True dacă s-a atins limita de noduri
     captured_at: float
+    window_area: int = 0     # 0 = necunoscută, nu se filtrează containerele
 
     def find(self, needle: str, case_sensitive: bool) -> Optional[Tuple[int, int, int, int]]:
-        """Primul element al cărui text conține `needle`."""
-        probe = needle if case_sensitive else needle.lower()
-        for text, rect in self.items:
-            hay = text if case_sensitive else text.lower()
-            if probe in hay:
-                return rect
-        return None
+        """Cel mai specific element al cărui text conține `needle`."""
+        best = probe_engine.best_text_match(self.items, needle, case_sensitive,
+                                            self.window_area)
+        return best[1] if best else None
 
     def joined_text(self) -> str:
         return "\n".join(t for t, _ in self.items)
@@ -298,7 +296,8 @@ def capture_window_text(hwnd: int, force: bool = False) -> Optional[UiaSnapshot]
         logger.debug("Parcurgere UIA eșuată pentru hwnd=%s: %s", hwnd, exc)
         return None
 
-    snap = UiaSnapshot(items=items, truncated=truncated, captured_at=now)
+    snap = UiaSnapshot(items=items, truncated=truncated, captured_at=now,
+                       window_area=max(0, (win_r - win_l) * (win_b - win_t)))
     with _snapshot_lock:
         _snapshot_cache[hwnd] = (rect, snap)
         if len(_snapshot_cache) > 24:          # nu lăsăm cache-ul să crească
@@ -445,8 +444,8 @@ class RuleEngine:
                 logger.warning("Expresie regulată invalidă %r: %s", needle, exc)
                 return False
 
-        probe = needle if case_sensitive else needle.lower()
-        hay = haystack if case_sensitive else haystack.lower()
+        probe = probe_engine.fold_text(needle, case_sensitive)
+        hay = probe_engine.fold_text(haystack, case_sensitive)
 
         if condition == "equals":
             # Comparăm cu fiecare linie: textul extras din pagină e multi-linie.

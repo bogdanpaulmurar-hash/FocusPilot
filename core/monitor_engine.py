@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+OWN_PID = os.getpid()
+
 BROWSER_PROCESSES = {"msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
 # Ferestre de sistem care nu pot conține conținut de interes.
@@ -159,11 +161,13 @@ def _describe_window(hwnd: int, with_url: bool = True) -> Optional[Dict[str, Any
         title = win32gui.GetWindowText(hwnd)
         if not title or title in IGNORED_TITLES:
             return None
-        if title.startswith("FocusPilot"):      # nu ne analizăm propriile ferestre
-            return None
 
         rect = win32gui.GetWindowRect(hwnd)
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        # Propriile ferestre se recunosc după proces, nu după titlu: un titlu
+        # ca „FocusPilot.pyw - Visual Studio Code" e o fereastră străină.
+        if pid == OWN_PID:
+            return None
         proc = get_process_name_native(pid)
         if proc in IGNORED_PROCESSES:
             return None
