@@ -19,7 +19,7 @@ CERINTE CHEIE:
    - Actiuni vizuale: Chenar rosu / personalizabil, fundal semitransparent, sageata rosie atragatoare (stanga/dreapta/sus/jos/animata), badge de avertizare text.
    - Suport pe 3 monitoare: Overlay transparent Windows click-through (WS_EX_TRANSPARENT | WS_EX_LAYERED) ca sa nu blocheze click-urile utilizatorului.
    - Suport suplimentar pentru Browser prin injectare Playwright si generator de Userscript (Tampermonkey) pentru stilizare directa a DOM-ului HTML.
-4. GUI de inalta calitate cu paleta corporate Siemens:
+4. GUI de inalta calitate cu paleta corporate:
    - Culori: Petrol (#00646E), Teal (#00A3A6), Accent (#EB780A).
    - Suport complet Light Mode si Dark Mode.
 5. Setari standard: Start with Windows in Registry, Hide in tray on start, Keep awake prin Windows SetThreadExecutionState.
