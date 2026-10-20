@@ -26,8 +26,8 @@ Utilizatorul lucrează pe un setup cu **3 monitoare** și accesează frecvent pa
    - Fereastra overlay folosește stilurile Windows `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW` — utilizatorul poate da click și scrie prin overlay direct în câmpul evidențiat, fără ca overlay-ul să blocheze mouse-ul sau tastatura!
 6. **Browser DOM Integration (Playwright / Userscript)**:
    - Pe lângă overlay-ul nativ Windows, aplicația poate injecta direct CSS/JS în browser prin Playwright sau poate genera un Userscript (Tampermonkey) actualizat automat cu toate regulile de formatare condițională.
-7. **UI Siemens-Inspired**:
-   - Paletă modernă corporativă Siemens (Teal `#00646E`, Petrol `#00A3A6`, Accent Orange `#EB780A`, Slate Gray).
+7. **UI Corporate-Inspired**:
+   - Paletă modernă corporativă (Teal `#00646E`, Petrol `#00A3A6`, Accent Orange `#EB780A`, Slate Gray).
    - Suport complet pentru **Light Mode** și **Dark Mode** toggleabil din GUI.
    - Setări standard: Start with Windows (Registry Run), Hide in tray on start, Keep PC awake (`SetThreadExecutionState`).
 
@@ -54,7 +54,7 @@ FocusPilot/
 │   └── keep_awake.py              # Windows API kernel32.SetThreadExecutionState
 ├── ui/
 │   ├── __init__.py
-│   ├── theme.py                   # Temă Siemens (Paletă culori Light / Dark, fonturi, stiluri ttk)
+│   ├── theme.py                   # Temă corporate (Paletă culori Light / Dark, fonturi, stiluri ttk)
 │   ├── tray_manager.py            # Meniu de system tray (pystray) cu meniu dinamic de reguli
 │   ├── main_window.py             # Dashboard principal (Listă reguli, Toggle, Adăugare, Editare, Ștergere)
 │   ├── rule_editor_dialog.py      # Dialog de creare/editare regulă stil Excel cu Live Preview
@@ -79,12 +79,12 @@ Fiecare regulă de formatare condițională este stocată în `config.json` conf
 ```json
 {
   "id": "rule_20261009_001",
-  "name": "Evidențiere Câmp Obligatoriu Portal Siemens",
+  "name": "Evidențiere Câmp Obligatoriu Portal Intern",
   "enabled": true,
   "trigger": {
     "target_type": "browser_or_window", 
-    "window_title_pattern": "*Siemens Portal*",
-    "url_pattern": "*portal.siemens.cloud/*",
+    "window_title_pattern": "*Portal Intern*",
+    "url_pattern": "*portal.exemplu.local/*",
     "process_name": "msedge.exe",
     "text_condition": "contains",
     "search_text": "Câmp Obligatoriu",
@@ -120,11 +120,11 @@ Fiecare regulă de formatare condițională este stocată în `config.json` conf
 
 ---
 
-## 4. DESIGN ȘI GHID DE CULORI (SIEMENS THEME)
+## 4. DESIGN ȘI GHID DE CULORI (CORPORATE THEME)
 
-- **Siemens Petrol / Teal Primar:** `#00646E`
-- **Siemens Mint / Teal Secundar:** `#00A3A6`
-- **Siemens Accent Orange:** `#EB780A`
+- **Petrol / Teal Primar:** `#00646E`
+- **Mint / Teal Secundar:** `#00A3A6`
+- **Accent Orange:** `#EB780A`
 - **Dark Mode Background:** `#181F25` (Card background: `#212A32`, Border: `#2C3742`)
 - **Light Mode Background:** `#F4F6F8` (Card background: `#FFFFFF`, Border: `#DCE2E6`)
 - **Alert / Highlighting Red:** `#E60000` (Glow: `#FF4D4D`, Soft fill: `rgba(230,0,0,0.18)`)

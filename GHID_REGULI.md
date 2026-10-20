@@ -259,7 +259,7 @@ Note practice:
 
 ### Culorile
 
-Paleta Siemens, pentru consecvență:
+Paletă corporate, pentru consecvență:
 
 | Culoare | Cod | Pentru |
 |---|---|---|
@@ -280,7 +280,7 @@ Un filtru lăsat pe `*` sau gol nu respinge nimic.
 |---|---|---|
 | 1 | **Aplicație / Browser** | `browser (Edge + Chrome)` acoperă Edge, Chrome, Firefox, Brave, Opera. Sau un executabil: `excel.exe` |
 | 2 | **Titlu Fereastră / Tab** | `*TIMA*` · `TIMA` (devine `*TIMA*`) · `*Service Platform*\|*GSP*` (alternative) |
-| 3 | **Link / URL** | `*tima.siemens.com/otwg20*` · lasă `*` dacă adresa nu contează |
+| 3 | **Link / URL** | `*portal.exemplu.local/app*` · lasă `*` dacă adresa nu contează |
 | 4 | **Text sau condiții** | vezi secțiunile 2 și 3 |
 
 Bara verticală `|` separă alternative, la titlu și la URL. Se potrivește oricare.
@@ -539,7 +539,7 @@ valoarea citită efectiv:
 ```
 ✅ TIMA Web Gateway — Ticket 48213
      proces: chrome.exe
-     URL:    https://tima.siemens.com/otwg20/#/main
+     URL:    https://portal.exemplu.local/app/#/main
      ✅ status este exact 'Wait for Merge' — valoare citită: 'Wait for Merge'
      ❌ cantitate este mai mare decât '0' — valoare citită: '(negăsit)'
        ⚠️ cantitate: Eticheta 'Quantity' nu e vizibilă pe ecran.

@@ -22,7 +22,7 @@
    - ❌ **Ieșire FocusPilot**
 
 3. **Formatare Condițională Stil Excel**:
-   - **Filtru Țintă**: Titlu fereastră (ex: `*Siemens Portal*`), URL browser, Proces (ex: `msedge.exe`, `chrome.exe`).
+   - **Filtru Țintă**: Titlu fereastră (ex: `*Portal Intern*`), URL browser, Proces (ex: `msedge.exe`, `chrome.exe`).
    - **Condiții Text**: Conține text (*contains*), Text exact (*equals*), Începe cu (*starts_with*), Constelație de cuvinte cheie (*cuvinte separate prin ;*), Expresie regulată (*regex*).
    - **Repere Vizuale (Visual Cues)**:
      - Chenar roșu configurabil (culoare, grosime, glow).
@@ -39,8 +39,8 @@
    - Include modul Playwright (`integrations/playwright_highlighter.py`) pentru conectare la browser prin CDP.
    - Generează automat script Tampermonkey/Violentmonkey (`integrations/focuspilot_browser_highlighter.user.js`) pentru injectare directă în DOM-ul paginii HTML.
 
-6. **Interfață Siemens Style**:
-   - Paletă corporativă: Siemens Petrol (`#00646E`), Siemens Mint/Teal (`#00A3A6`), Accent Orange (`#EB780A`).
+6. **Interfață Corporate Style**:
+   - Paletă corporativă: Petrol (`#00646E`), Mint/Teal (`#00A3A6`), Accent Orange (`#EB780A`).
    - Comutare instantanee între **Dark Mode** și **Light Mode**.
 
 ---
@@ -91,7 +91,7 @@ FocusPilot/
 │   ├── autostart.py                # Integrare Windows Registry Run
 │   └── keep_awake.py               # SetThreadExecutionState
 ├── ui/
-│   ├── theme.py                    # Paletă culori Siemens (Dark & Light)
+│   ├── theme.py                    # Paletă culori corporate (Dark & Light)
 │   ├── tray_manager.py             # Meniu System Tray pystray
 │   ├── main_window.py              # Dashboard configurare reguli
 │   ├── rule_editor_dialog.py       # Editor reguli cu Live Preview
