@@ -13,8 +13,8 @@ desenează chenare, cercuri, highlight, săgeți și badge-uri peste ele. Ce fac
 formatarea condițională în Excel, dar peste suprafața de lucru.
 
 Python + Tkinter, Windows, multi-monitor. Repo: `bogdanpaulmurar-hash/FocusPilot`,
-branch de lucru `fix/detection-and-stability`. Branch-ul `main` e versiunea veche
-care nu pornește — nu îl folosi ca referință.
+branch de lucru `main` (branch-ul `fix/detection-and-stability` a fost unificat
+în main pe 21.10 și nu mai primește commit-uri).
 
 ### Cum vreau să lucrezi
 

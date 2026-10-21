@@ -171,8 +171,9 @@ raportată în interfață.
 
 ## Stare
 
-Branch: `fix/detection-and-stability`, publicat. `main` e versiunea veche, care
-**nu pornește** (importuri lipsă) — nu te întoarce la ea ca referință.
+Branch de lucru: **`main`** (din 21.10 conține tot ce era pe
+`fix/detection-and-stability`, plus reparațiile din 15.10). Branch-ul fix nu mai
+primește commit-uri.
 
 De făcut, când apare nevoia:
 
@@ -181,3 +182,17 @@ De făcut, când apare nevoia:
   repo; acum cad pe coordonatele salvate, dar merită recapturate
 - `playwright_highlighter.py` nu e conectat la interfață; userscript-ul acoperă
   același scop
+
+---
+
+## Context comun
+
+Prezentarea proiectelor și lista de erori/modificări sunt în două Google Docs:
+**PROIECTE_CONTEXT (live)** și **MODIFICARI_PROIECTE (live)** — citește doar
+secțiunea FocusPilot. Ce s-a implementat și confirmat se șterge din MODIFICARI.
+
+## Când se actualizează fișierul
+
+În același commit, când se schimbă comenzile de test, harta fișierelor, schema
+regulilor sau când un defect scoate la iveală o invariantă nouă. Nu pentru
+funcții obișnuite.
