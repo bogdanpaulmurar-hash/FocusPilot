@@ -71,9 +71,9 @@ check('"*" se potrivește cu orice', function () {
 });
 
 check('wildcard pe URL', function () {
-    assert.ok(patternMatches('*tima.siemens.com/otwg20*',
-                             'https://tima.siemens.com/otwg20/#/main'));
-    assert.ok(!patternMatches('*tima.siemens.com/otwg20*',
+    assert.ok(patternMatches('*portal.exemplu.local/app*',
+                             'https://portal.exemplu.local/app/#/main'));
+    assert.ok(!patternMatches('*portal.exemplu.local/app*',
                               'https://intranet.example.com/home'));
 });
 

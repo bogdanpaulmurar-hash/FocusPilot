@@ -1,7 +1,7 @@
 {
   "settings": {
     "theme": "light",
-    "start_with_windows": true,
+    "start_with_windows": false,
     "hide_on_start": true,
     "keep_awake": true,
     "poll_interval_sec": 0.6,
@@ -10,12 +10,12 @@
   },
   "rules": [
     {
-      "id": "rule_sample_02",
-      "name": "Exemplu: Atenționare Text Critic (Generic)",
+      "id": "rule_example_01",
+      "name": "Exemplu: schimbare de stare într-un portal de tichete",
       "enabled": true,
       "trigger": {
         "target_type": "any_window",
-        "window_title_pattern": "*GSP*",
+        "window_title_pattern": "*Portal Tichete*",
         "url_pattern": "*",
         "process_name": "browser",
         "text_condition": "contains",
@@ -38,34 +38,31 @@
         "arrow_width": 14,
         "arrow_size": 22,
         "badge_enabled": true,
-        "badge_text": "TimeStamp",
+        "badge_text": "STARE SCHIMBATĂ",
         "badge_bg": "#EB780A",
         "badge_fg": "#FFFFFF",
         "pulse_animation": true,
         "duration_sec": 3,
-        "box_scope": "custom_region"
+        "box_scope": "exact_text"
       },
       "region": {
-        "mode": "visual_track",
-        "rel_x": 0.151,
-        "rel_y": 0.786,
+        "mode": "window_relative",
+        "rel_x": 0.2,
+        "rel_y": 0.3,
         "width": 763,
         "height": 35,
-        "monitor_index": -1,
-        "abs_x": 284,
-        "abs_y": 816,
-        "template_image": "assets/rules/snip_1791808212611.png"
+        "monitor_index": -1
       },
       "steps": []
     },
     {
-      "id": "rule_6b16e036",
-      "name": "ticket classification TIMA",
+      "id": "rule_example_02",
+      "name": "Exemplu: clasificare tichet pe o pagină anume",
       "enabled": true,
       "trigger": {
         "target_type": "browser_or_window",
-        "window_title_pattern": "*TIMA*",
-        "url_pattern": "*https://tima.siemens.com/otwg20/#/main*",
+        "window_title_pattern": "*Gateway*",
+        "url_pattern": "*https://portal.exemplu.local/app/#/main*",
         "process_name": "browser",
         "text_condition": "contains",
         "search_text": "Please change category",
@@ -91,24 +88,21 @@
         "box_scope": "exact_text"
       },
       "region": {
-        "mode": "visual_track",
-        "template_image": "assets/rules/snip_tima.png",
-        "rel_x": 0.284,
-        "rel_y": 0.737,
+        "mode": "window_relative",
+        "rel_x": 0.2,
+        "rel_y": 0.3,
         "width": 310,
         "height": 30,
-        "monitor_index": -1,
-        "abs_x": 554,
-        "abs_y": 751
+        "monitor_index": -1
       }
     },
     {
-      "id": "rule_a17906d0",
-      "name": "Changed from 'Merge' to 'Wait for Merge'",
+      "id": "rule_example_03",
+      "name": "Exemplu: aceeași regulă, două titluri de fereastră posibile",
       "enabled": false,
       "trigger": {
         "target_type": "browser_or_window",
-        "window_title_pattern": "*Service Platform Industry*|*GSP*",
+        "window_title_pattern": "*Platformă Service*|*Portal Tichete*",
         "url_pattern": "*",
         "process_name": "browser",
         "text_condition": "contains",
@@ -120,7 +114,7 @@
       },
       "visual_cue": {
         "box_enabled": true,
-        "box_scope": "custom_region",
+        "box_scope": "exact_text",
         "border_color": "#FF0000",
         "border_width": 3,
         "fill_color": "#FF3333",
@@ -139,15 +133,12 @@
         "duration_sec": 0
       },
       "region": {
-        "mode": "visual_track",
-        "rel_x": 0.152,
-        "rel_y": 0.833,
+        "mode": "window_relative",
+        "rel_x": 0.2,
+        "rel_y": 0.3,
         "width": 814,
         "height": 38,
-        "monitor_index": -1,
-        "abs_x": 286,
-        "abs_y": 865,
-        "template_image": "assets/rules/snip_1791802966647.png"
+        "monitor_index": -1
       },
       "steps": []
     }
