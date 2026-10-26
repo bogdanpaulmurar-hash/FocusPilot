@@ -22,7 +22,7 @@ dubluri, iar textul „citit de pe ecran" e furnizat direct de test.
 ## Verificare — rulează asta la fiecare modificare
 
 ```bash
-python tests/run_all.py          # 172 teste Python + 20 JavaScript
+python tests/run_all.py          # 190 teste Python + 20 JavaScript
 ```
 
 Separat, când lucrezi punctual:
@@ -31,8 +31,12 @@ Separat, când lucrezi punctual:
 python tests/test_rule_engine.py    # filtre, condiții text, geometrie
 python tests/test_probe_engine.py   # câmpuri, operatori, marcaje
 python tests/test_examples.py       # regulile din GHID_REGULI.md
+python tests/test_browser_injection.py  # injectarea CDP; 2 teste pe browser real
 node   tests/test_userscript.js     # logica din userscript-ul generat
 ```
+
+Cele 2 teste pe browser real se sar fără pachetul `playwright` sau fără
+Chrome / Edge. Un browser anume se indică cu `FOCUSPILOT_TEST_CHROME=<cale>`.
 
 `test_examples.py` trece regulile din documentație prin motorul real. Dacă
 modifici schema de reguli și el cade, documentația a rămas în urmă — nu
@@ -55,7 +59,8 @@ dezactiva testul, actualizează ghidul.
 | `ui/condition_builder.py` | panoul de câmpuri / condiții / marcaje |
 | `ui/rule_editor_dialog.py` | editorul de reguli, diagnosticarea live |
 | `ui/interactive_picker.py` | selectorul de pe ecran (zonă sau punct) |
-| `integrations/userscript_generator.py` | generează userscript-ul Tampermonkey |
+| `integrations/userscript_generator.py` | generează userscript-ul Tampermonkey; `build_userscript` dă și versiunea |
+| `integrations/playwright_highlighter.py` | injectează același script prin CDP, pe fir propriu (`CdpInjector`) |
 
 Documentația pentru utilizator: `GHID_REGULI.md`. Exemple: `examples/reguli_exemplu.json`.
 
@@ -104,6 +109,13 @@ saturează procesorul.
 
 **Potrivirea de șabloane imagine e scumpă** (captură pe tot spațiul virtual +
 OpenCV). Are cache propriu; nu o apela în buclă.
+
+**Scriptul de browser există o singură dată: `USERSCRIPT_TEMPLATE`.** Injectarea
+CDP livrează exact acest script, nu o copie. Scriptul se înregistrează în
+`window.__focuspilot` cu versiunea regulilor; o a doua injectare cu aceeași
+versiune nu face nimic, cu alta curăță marcajele vechi. CDP șterge la
+dezactivare doar instanța marcată `injectedBy = 'cdp'`, nu pe cea din
+Tampermonkey. Apelurile Playwright se fac doar pe firul `CdpInjector`.
 
 **Jurnalul nu se scrie la fiecare redare.** Nivelul e INFO, cu rotație la 2 MB.
 `FOCUSPILOT_DEBUG=1` ridică la DEBUG.
@@ -194,8 +206,6 @@ De făcut, când apare nevoia:
   (scoase din arbore pe 26.10); curățarea cere rescrierea istoricului
 - regulile existente referă `assets/rules/snip_*.png`, fișiere care nu există în
   repo; acum cad pe coordonatele salvate, dar merită recapturate
-- `playwright_highlighter.py` nu e conectat la interfață; userscript-ul acoperă
-  același scop
 
 ---
 

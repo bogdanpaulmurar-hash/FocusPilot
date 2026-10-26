@@ -23,7 +23,8 @@ sys.path.insert(0, ROOT)
 def run_python_tests() -> bool:
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
-    for name in ("test_rule_engine", "test_probe_engine", "test_examples"):
+    for name in ("test_rule_engine", "test_probe_engine", "test_examples",
+                 "test_browser_injection"):
         suite.addTests(loader.discover(HERE, pattern=f"{name}.py", top_level_dir=HERE))
 
     print("=" * 70)

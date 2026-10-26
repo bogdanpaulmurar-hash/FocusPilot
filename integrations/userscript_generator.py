@@ -27,8 +27,9 @@ Trei defecte ale variantei anterioare sunt remediate aici:
 
 import os
 import json
+import hashlib
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from core.config_manager import ConfigManager
 
@@ -52,10 +53,26 @@ USERSCRIPT_TEMPLATE = r"""// ==UserScript==
     'use strict';
 
     const RULES = __RULES_JSON__;
+    const VERSION = '__RULES_VERSION__';
     const MARK = 'focuspilotMarked';
     const DEBOUNCE_MS = 250;
 
-    if (!RULES.length) { return; }
+    // Scriptul poate ajunge de două ori în aceeași pagină: o dată din
+    // Tampermonkey și o dată prin injectarea CDP din aplicație, sau prin CDP
+    // după fiecare salvare a regulilor. Fără această protecție fiecare
+    // injectare adăuga încă un observator, iar marcajele regulilor șterse
+    // rămâneau în pagină.
+    const previous = window.__focuspilot;
+    if (previous && previous.version === VERSION) { return; }
+    if (previous && typeof previous.teardown === 'function') {
+        try { previous.teardown(); } catch (e) { /* instanța veche e deja ruptă */ }
+    }
+    const instance = { version: VERSION, teardown: null, schedule: null };
+    window.__focuspilot = instance;
+
+    // Și fără reguli instanța rămâne înregistrată, ca injectarea CDP să nu
+    // reîncerce la fiecare tic și ca marcajele vechi să fi fost curățate.
+    if (!RULES.length) { instance.teardown = function () {}; return; }
 
     // ── Potrivirea paginii curente ──────────────────────────────────────────
 
@@ -313,6 +330,19 @@ USERSCRIPT_TEMPLATE = r"""// ==UserScript==
         pending = setTimeout(function () { pending = null; run(); }, DEBOUNCE_MS);
     }
 
+    function clearAll() {
+        // Toate marcajele, nu doar ale regulilor curente: o regulă ștearsă
+        // între două injectări nu mai apare în RULES, dar marcajele ei da.
+        document.querySelectorAll('.focuspilot-tag').forEach(function (n) { n.remove(); });
+        document.querySelectorAll('[data-focuspilot-marked]').forEach(function (el) {
+            el.style.removeProperty('outline');
+            el.style.removeProperty('outline-offset');
+            el.style.removeProperty('background-color');
+            el.style.removeProperty('animation');
+            delete el.dataset[MARK];
+        });
+    }
+
     const style = document.createElement('style');
     style.textContent =
         '@keyframes focuspilot-nudge{0%{transform:translateX(0);opacity:.75}' +
@@ -322,20 +352,58 @@ USERSCRIPT_TEMPLATE = r"""// ==UserScript==
     (document.head || document.documentElement).appendChild(style);
 
     observer = new MutationObserver(scheduleRun);
+    instance.schedule = scheduleRun;
+    instance.teardown = function () {
+        if (pending) { clearTimeout(pending); pending = null; }
+        if (observer) { observer.disconnect(); observer = null; }
+        clearAll();
+        style.remove();
+    };
     run();
 
     // Aplicațiile de tip SPA schimbă adresa fără reîncărcare: reevaluăm.
-    ['pushState', 'replaceState'].forEach(function (name) {
-        const original = history[name];
-        history[name] = function () {
-            const out = original.apply(this, arguments);
-            scheduleRun();
-            return out;
+    // Istoricul se învelește o singură dată pe pagină și cheamă instanța
+    // curentă; altfel fiecare reinjectare adăuga încă un strat de învelire.
+    if (!window.__focuspilotHistoryHooked) {
+        window.__focuspilotHistoryHooked = true;
+        const reschedule = function () {
+            const current = window.__focuspilot;
+            if (current && current.schedule) { current.schedule(); }
         };
-    });
-    window.addEventListener('popstate', scheduleRun);
+        ['pushState', 'replaceState'].forEach(function (name) {
+            const original = history[name];
+            history[name] = function () {
+                const out = original.apply(this, arguments);
+                reschedule();
+                return out;
+            };
+        });
+        window.addEventListener('popstate', reschedule);
+    }
 })();
 """
+
+
+def build_userscript(rules: List[Dict[str, Any]]) -> Tuple[str, str]:
+    """
+    (conținutul scriptului, versiunea regulilor) pentru regulile date.
+
+    Versiunea e o amprentă a regulilor active: aceeași pentru aceleași reguli,
+    deci injectarea CDP știe dacă o pagină are deja scriptul curent și nu-l
+    reinjectează la fiecare tic.
+    """
+    active: List[Dict[str, Any]] = [
+        _slim(rule) for rule in rules if rule.get("enabled", True)
+    ]
+
+    # json.dumps produce un literal JavaScript valid indiferent de ghilimelele,
+    # apostrofurile sau diacriticele din textul regulilor.
+    rules_json = json.dumps(active, indent=2, ensure_ascii=False)
+    version = hashlib.sha1(rules_json.encode("utf-8")).hexdigest()[:12]
+    content = (USERSCRIPT_TEMPLATE
+               .replace("__RULES_VERSION__", version)
+               .replace("__RULES_JSON__", rules_json))
+    return content, version
 
 
 def generate_userscript(config_manager: ConfigManager,
@@ -346,21 +414,15 @@ def generate_userscript(config_manager: ConfigManager,
         output_path = os.path.join(base_dir, "integrations",
                                    "focuspilot_browser_highlighter.user.js")
 
-    active: List[Dict[str, Any]] = [
-        _slim(rule) for rule in config_manager.get_rules()
-        if rule.get("enabled", True)
-    ]
-
-    # json.dumps produce un literal JavaScript valid indiferent de ghilimelele,
-    # apostrofurile sau diacriticele din textul regulilor.
-    rules_json = json.dumps(active, indent=2, ensure_ascii=False)
-    content = USERSCRIPT_TEMPLATE.replace("__RULES_JSON__", rules_json)
+    rules = config_manager.get_rules()
+    content, _version = build_userscript(rules)
+    active_count = sum(1 for rule in rules if rule.get("enabled", True))
 
     try:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as handle:
             handle.write(content)
-        logger.info("Userscript generat (%d reguli active): %s", len(active), output_path)
+        logger.info("Userscript generat (%d reguli active): %s", active_count, output_path)
     except Exception as exc:
         logger.error("Scrierea userscript-ului a eșuat: %s", exc)
 

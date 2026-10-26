@@ -31,7 +31,11 @@ DEFAULT_SETTINGS = {
     # limitează oricum valoarea la intervalul [0.25, 5.0].
     "poll_interval_sec": 0.6,
     "sound_alert": False,
-    "global_enabled": True
+    "global_enabled": True,
+    # Injectarea regulilor în browser prin portul de depanare (CDP). Oprită
+    # implicit: cere un browser pornit cu --remote-debugging-port.
+    "cdp_injection_enabled": False,
+    "cdp_port": 9222,
 }
 
 
