@@ -6,6 +6,8 @@ __pycache__/
 # Logs
 *.log
 focuspilot_log.txt
+# Rotația la 2 MB lasă focuspilot_log.txt.1, .2 …, care apăreau ca neurmărite.
+focuspilot_log.txt.*
 chat_esuat.txt
 
 # Temporary screenshots
