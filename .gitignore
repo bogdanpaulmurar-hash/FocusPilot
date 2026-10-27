@@ -24,3 +24,9 @@ venv/
 .venv/
 # Scanări salvate de selectorul interactiv
 assets/rules/
+
+# Configurația locală: regulile reale conțin URL-uri și titluri de aplicații
+# interne. În repo stă doar config.example.json.
+config.json
+# Generat din config.json, deci conține aceleași reguli.
+integrations/focuspilot_browser_highlighter.user.js

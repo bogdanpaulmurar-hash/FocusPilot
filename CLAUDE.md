@@ -22,7 +22,7 @@ dubluri, iar textul „citit de pe ecran" e furnizat direct de test.
 ## Verificare — rulează asta la fiecare modificare
 
 ```bash
-python tests/run_all.py          # 164 teste Python + 20 JavaScript
+python tests/run_all.py          # 172 teste Python + 20 JavaScript
 ```
 
 Separat, când lucrezi punctual:
@@ -49,7 +49,7 @@ dezactiva testul, actualizează ghidul.
 | `core/probe_engine.py` | câmpuri numite, operatori, condiții, rezolvarea marcajelor, validare |
 | `core/mark_geometry.py` | marcaj → primitive de desen; conversia regulilor clasice. **Fără importuri de interfață** — de aici testabilitatea |
 | `core/monitor_engine.py` | firul de scanare, enumerarea ferestrelor, citirea URL-ului |
-| `core/config_manager.py` | `config.json`, thread-safe |
+| `core/config_manager.py` | `config.json`, thread-safe; la prima pornire îl creează din `config.example.json` |
 | `ui/shape_overlay.py` | ferestrele care desenează efectiv |
 | `ui/overlay_cue.py` | orchestrarea reperelor, animația de pulsare |
 | `ui/condition_builder.py` | panoul de câmpuri / condiții / marcaje |
@@ -71,6 +71,11 @@ decide ce cale se folosește.
 
 Regulile existente din `config.json` sunt în format clasic. **Orice schimbare de
 schemă trebuie să le lase funcționale** — sunt reguli reale, de lucru.
+
+`config.json` e local și ignorat de git (conține URL-uri interne, repo-ul e
+public); la fel userscript-ul generat din el. În repo stă `config.example.json`,
+cu domenii fictive — un test verifică asta. Nu pune valori reale în exemplu, în
+teste sau în documentație.
 
 ---
 
@@ -185,7 +190,8 @@ primește commit-uri.
 
 De făcut, când apare nevoia:
 
-- `config.json` conține URL-uri interne reale și e commit-at în repo public
+- istoricul git încă conține `config.json` și userscript-ul cu URL-urile interne
+  (scoase din arbore pe 26.10); curățarea cere rescrierea istoricului
 - regulile existente referă `assets/rules/snip_*.png`, fișiere care nu există în
   repo; acum cad pe coordonatele salvate, dar merită recapturate
 - `playwright_highlighter.py` nu e conectat la interfață; userscript-ul acoperă

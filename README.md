@@ -62,6 +62,17 @@ Două pachete sunt **obligatorii pentru detecție**, nu opționale:
 
 FocusPilot verifică ambele la pornire și afișează un avertisment dacă lipsesc.
 
+### Configurația ta
+
+Regulile și setările stau în `config.json`, care **nu e în repo** (e în
+`.gitignore`): regulile de lucru conțin de obicei URL-uri și nume de aplicații
+interne. La prima pornire, FocusPilot îl creează din `config.example.json`, un
+set de reguli exemplu cu domenii fictive. După aceea editezi regulile din
+aplicație; `config.json` rămâne doar pe calculatorul tău.
+
+Scriptul de browser generat (`integrations/focuspilot_browser_highlighter.user.js`)
+conține aceleași reguli, așa că e ignorat de git din același motiv.
+
 ### Pornire
 - **Dublu clic pe `run_focuspilot.vbs`** (pornire invizibilă 100%, fără flash de consolă).
 - Sau dublu clic pe `FocusPilot.pyw`.
@@ -81,6 +92,7 @@ FocusPilot/
 ├── README.md                       # Acest ghid
 ├── requirements.txt                # Dependențe
 ├── .gitignore                      # Reguli ignorare Git
+├── config.example.json             # Reguli exemplu; config.json local pornește de aici
 ├── FocusPilot.pyw                  # Entry-point executabil fără consolă
 ├── run_focuspilot.vbs              # Launcher VBS silențios
 ├── start_FocusPilot.bat            # Script de pornire .bat

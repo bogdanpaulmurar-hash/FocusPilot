@@ -13,7 +13,8 @@ import sys
 import types
 import unittest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 
 # ── Dubluri pentru modulele disponibile doar pe Windows ──────────────────────
@@ -271,15 +272,15 @@ class TestWindowFilters(EngineTestCase):
         `url_pattern` exista în editor și în config.json, dar motorul nu îl
         evalua niciodată: o regulă legată de un URL se declanșa pe orice pagină.
         """
-        rule = self._rule(url_pattern="*tima.siemens.com/otwg20*")
-        matching = window(url="https://tima.siemens.com/otwg20/#/main")
+        rule = self._rule(url_pattern="*portal.exemplu.local/app*")
+        matching = window(url="https://portal.exemplu.local/app/#/main")
         other = window(url="https://intranet.example.com/home")
         self.assertTrue(RuleEngine.evaluate(rule, matching, VIRT).matched)
         self.assertFalse(RuleEngine.evaluate(rule, other, VIRT).matched)
 
     def test_url_filter_tolerates_unknown_url(self):
         """Dacă URL-ul nu poate fi citit, regula nu e respinsă pe nedrept."""
-        rule = self._rule(url_pattern="*tima.siemens.com*")
+        rule = self._rule(url_pattern="*portal.exemplu.local*")
         self.assertTrue(RuleEngine.evaluate(rule, window(url=""), VIRT).matched)
 
     def test_disabled_rule_never_matches(self):
@@ -477,6 +478,77 @@ class TestConfigDefaults(unittest.TestCase):
             config_manager.DEFAULT_SAMPLE_RULES[0]["visual_cue"]["border_color"],
             original,
             "șablonul de reguli implicite nu trebuie modificat")
+
+    def test_first_run_starts_from_example(self):
+        """config.json e ignorat de git; o instalare nouă pornește de la exemplu."""
+        import json
+        import shutil
+        import tempfile
+        from core.config_manager import ConfigManager
+
+        with tempfile.TemporaryDirectory() as folder:
+            shutil.copy(os.path.join(ROOT, "config.example.json"), folder)
+            cfg = ConfigManager(folder)
+            with open(os.path.join(ROOT, "config.example.json"), encoding="utf-8") as f:
+                expected = [r["id"] for r in json.load(f)["rules"]]
+            self.assertEqual([r["id"] for r in cfg.get_rules()], expected)
+            self.assertTrue(os.path.exists(os.path.join(folder, "config.json")))
+            # Setările lipsă din exemplu se completează din valorile implicite.
+            self.assertIsNotNone(cfg.get_setting("poll_interval_sec"))
+
+    def test_existing_local_config_is_not_replaced(self):
+        """Exemplul servește doar la prima pornire; regulile reale rămân."""
+        import json
+        import shutil
+        import tempfile
+        from core.config_manager import ConfigManager
+
+        with tempfile.TemporaryDirectory() as folder:
+            shutil.copy(os.path.join(ROOT, "config.example.json"), folder)
+            local = {"settings": {}, "rules": [{"id": "rule_local", "name": "x"}]}
+            with open(os.path.join(folder, "config.json"), "w", encoding="utf-8") as f:
+                json.dump(local, f)
+            cfg = ConfigManager(folder)
+            self.assertEqual([r["id"] for r in cfg.get_rules()], ["rule_local"])
+
+    def test_broken_example_falls_back_to_defaults(self):
+        import tempfile
+        from core import config_manager
+        from core.config_manager import ConfigManager
+
+        with tempfile.TemporaryDirectory() as folder:
+            with open(os.path.join(folder, "config.example.json"), "w") as f:
+                f.write("{ nu e json")
+            with self.assertLogs(config_manager.logger, level="ERROR"):
+                cfg = ConfigManager(folder)
+            self.assertEqual(len(cfg.get_rules()), len(config_manager.DEFAULT_SAMPLE_RULES))
+
+    def test_example_config_has_only_placeholder_urls(self):
+        """
+        Repo-ul e public. config.json, cu URL-uri interne reale, a fost commit-at
+        aici; exemplul care îl înlocuiește are voie doar la domenii fictive.
+        """
+        import json
+        import re
+        with open(os.path.join(ROOT, "config.example.json"), encoding="utf-8") as f:
+            text = f.read()
+        json.loads(text)
+        for host in re.findall(r"https?://([^/\"*#]+)", text):
+            self.assertTrue(host.endswith((".local", ".example", "example.com")),
+                            f"domeniu care nu e fictiv în exemplu: {host}")
+
+    def test_example_rules_evaluate(self):
+        """Exemplul e prima experiență a unui utilizator nou: trebuie să meargă."""
+        import json
+        with open(os.path.join(ROOT, "config.example.json"), encoding="utf-8") as f:
+            rule = json.load(f)["rules"][1]
+        win = window(title="Portal Gateway",
+                     url="https://portal.exemplu.local/app/#/main",
+                     extra_text=rule["trigger"]["search_text"])
+        self.assertTrue(RuleEngine.evaluate(rule, win, VIRT).matched)
+        other = window(title="Portal Gateway", url="https://alt.exemplu.local/",
+                       extra_text=rule["trigger"]["search_text"])
+        self.assertFalse(RuleEngine.evaluate(rule, other, VIRT).matched)
 
     def test_poll_interval_is_clamped(self):
         """Un interval prea mic ar face scanările să se suprapună."""

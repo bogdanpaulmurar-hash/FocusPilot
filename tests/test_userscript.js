@@ -13,7 +13,10 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 
-const SCRIPT = path.join(__dirname, '..', 'integrations',
+// run_all.py generează un userscript temporar din config.example.json și îl
+// transmite aici; rulat direct, testul folosește scriptul generat local.
+const SCRIPT = process.env.FOCUSPILOT_USERSCRIPT ||
+               path.join(__dirname, '..', 'integrations',
                          'focuspilot_browser_highlighter.user.js');
 
 if (!fs.existsSync(SCRIPT)) {
@@ -71,9 +74,9 @@ check('"*" se potrivește cu orice', function () {
 });
 
 check('wildcard pe URL', function () {
-    assert.ok(patternMatches('*tima.siemens.com/otwg20*',
-                             'https://tima.siemens.com/otwg20/#/main'));
-    assert.ok(!patternMatches('*tima.siemens.com/otwg20*',
+    assert.ok(patternMatches('*portal.exemplu.local/app*',
+                             'https://portal.exemplu.local/app/#/main'));
+    assert.ok(!patternMatches('*portal.exemplu.local/app*',
                               'https://intranet.example.com/home'));
 });
 

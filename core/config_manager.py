@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 
 CONFIG_FILENAME = "config.json"
 
+# Configurația reală (config.json) e locală și ignorată de git: regulile de lucru
+# conțin URL-uri și titluri de aplicații interne, iar repo-ul e public. În repo
+# stă doar varianta curată, folosită ca punct de plecare la prima pornire.
+EXAMPLE_CONFIG_FILENAME = "config.example.json"
+
 
 DEFAULT_SETTINGS = {
     "theme": "dark",                     # "dark" sau "light" (stil Siemens)
@@ -120,6 +125,7 @@ class ConfigManager:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.base_dir = base_dir
         self.config_path = os.path.join(self.base_dir, CONFIG_FILENAME)
+        self.example_path = os.path.join(self.base_dir, EXAMPLE_CONFIG_FILENAME)
         self._lock = Lock()
         self._data: Dict[str, Any] = {}
         self.load()
@@ -128,11 +134,9 @@ class ConfigManager:
         """Încarcă configurația din disc sau creează configurația implicită dacă lipsește."""
         with self._lock:
             if not os.path.exists(self.config_path):
-                self._data = {
-                    "settings": copy.deepcopy(DEFAULT_SETTINGS),
-                    "rules": copy.deepcopy(DEFAULT_SAMPLE_RULES)
-                }
+                self._data = self._initial_data()
                 self._save_unlocked()
+                self._complete_settings()
                 return self._data
 
             try:
@@ -147,18 +151,40 @@ class ConfigManager:
                 self._save_unlocked()
                 return self._data
 
-            # Asigurăm completitudinea setărilor
-            if "settings" not in self._data:
-                self._data["settings"] = copy.deepcopy(DEFAULT_SETTINGS)
-            else:
-                for k, v in DEFAULT_SETTINGS.items():
-                    if k not in self._data["settings"]:
-                        self._data["settings"][k] = v
-
-            if "rules" not in self._data:
-                self._data["rules"] = copy.deepcopy(DEFAULT_SAMPLE_RULES)
-
+            self._complete_settings()
             return self._data
+
+    def _initial_data(self) -> Dict[str, Any]:
+        """
+        Conținutul unui config.json nou: exemplul din repo dacă există și se
+        poate citi, altfel valorile implicite din cod.
+        """
+        if os.path.exists(self.example_path):
+            try:
+                with open(self.example_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                logger.info(f"config.json lipsește; pornesc de la {EXAMPLE_CONFIG_FILENAME}.")
+                return data
+            except Exception as exc:
+                # Raportat, nu înghițit: altfel utilizatorul vede regulile din
+                # cod fără să știe că exemplul lui e stricat.
+                logger.error(f"{self.example_path} nu poate fi citit: {exc}. "
+                             f"Folosesc regulile implicite.")
+        return {
+            "settings": copy.deepcopy(DEFAULT_SETTINGS),
+            "rules": copy.deepcopy(DEFAULT_SAMPLE_RULES)
+        }
+
+    def _complete_settings(self) -> None:
+        """Completează cheile lipsă; un config mai vechi nu are setările noi."""
+        if not isinstance(self._data.get("settings"), dict):
+            self._data["settings"] = copy.deepcopy(DEFAULT_SETTINGS)
+        else:
+            for k, v in DEFAULT_SETTINGS.items():
+                self._data["settings"].setdefault(k, v)
+
+        if "rules" not in self._data:
+            self._data["rules"] = copy.deepcopy(DEFAULT_SAMPLE_RULES)
 
     def save(self) -> bool:
         """Salvează configurația pe disc în mod thread-safe."""
