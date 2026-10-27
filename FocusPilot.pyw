@@ -75,7 +75,10 @@ from core.keep_awake import enable_keep_awake, disable_keep_awake   # noqa: E402
 from ui.overlay_cue import MultiScreenOverlay                       # noqa: E402
 from ui.main_window import MainWindow                               # noqa: E402
 from ui.tray_manager import TrayManager, create_tray_image          # noqa: E402
-from integrations.userscript_generator import generate_userscript   # noqa: E402
+from integrations.userscript_generator import (                     # noqa: E402
+    generate_userscript, build_userscript,
+)
+from integrations.playwright_highlighter import CdpInjector          # noqa: E402
 
 TEST_CUE_SECONDS = 6
 
@@ -98,6 +101,9 @@ class FocusPilotApp:
         self.monitor = MonitorEngine(self.config_manager,
                                      on_cues_changed=self._on_cues_detected)
 
+        self.browser_injector = CdpInjector(
+            lambda: build_userscript(self.config_manager.get_rules()))
+
         self.dashboard = MainWindow(
             root=self.root,
             config_manager=self.config_manager,
@@ -105,6 +111,8 @@ class FocusPilotApp:
             on_test_cue=self._test_single_cue,
             on_toggle_pause=self._toggle_pause,
             on_quit=self.quit_app,
+            on_settings_changed=self._apply_browser_injection_settings,
+            browser_status=self.browser_injector.status,
         )
 
         self.tray = TrayManager(
@@ -148,9 +156,22 @@ class FocusPilotApp:
         except Exception as exc:
             logger.warning("Generarea userscript-ului a eșuat: %s", exc)
 
+    def _apply_browser_injection_settings(self) -> None:
+        try:
+            self.browser_injector.configure(
+                self.config_manager.get_setting("cdp_injection_enabled", False),
+                self.config_manager.get_setting("cdp_port", 9222))
+        except ValueError as exc:
+            # Un port invalid scris de mână în config.json: injectarea rămâne
+            # oprită, dar motivul ajunge în jurnal, nu se pierde.
+            logger.error("Injectare CDP oprită, port invalid: %s", exc)
+            self.browser_injector.configure(False)
+
     def start(self) -> None:
         self.tray.start()
         self.monitor.start()
+        self._apply_browser_injection_settings()
+        self.browser_injector.start()
 
         if not self.config_manager.get_setting("hide_on_start", True):
             self.root.after(200, self.dashboard.show)
@@ -201,6 +222,7 @@ class FocusPilotApp:
         self.monitor.notify_rules_changed()
         self.tray.refresh()
         self._regenerate_userscript()
+        self.browser_injector.notify_rules_changed()
 
     def _show_dashboard_from_tray(self) -> None:
         self.root.after(0, self.dashboard.show)
@@ -352,6 +374,7 @@ class FocusPilotApp:
         try:
             disable_keep_awake()
             self.monitor.stop()
+            self.browser_injector.stop()
             self.tray.stop()
             self.overlay.shutdown()
         except Exception as exc:

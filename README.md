@@ -36,7 +36,7 @@
    - Selector interactiv de pe ecran: Tragi un dreptunghi peste câmpul dorit și aplicația calculează automat coordonatele și titlul ferestrei.
 
 5. **Integrare Nativă Browser (Playwright & Userscript)**:
-   - Include modul Playwright (`integrations/playwright_highlighter.py`) pentru conectare la browser prin CDP.
+   - Injectare directă prin CDP (`integrations/playwright_highlighter.py`), pornită din Setări: același script ca userscript-ul, fără extensie, reaplicat în taburile noi și după fiecare salvare de regulă.
    - Generează automat script Tampermonkey/Violentmonkey (`integrations/focuspilot_browser_highlighter.user.js`) pentru injectare directă în DOM-ul paginii HTML.
 
 6. **Interfață Corporate Style**:
@@ -111,7 +111,7 @@ FocusPilot/
 │   ├── overlay_cue.py              # Overlay transparent click-through
 │   └── interactive_picker.py       # Selector zonă interactiv de pe ecran
 ├── integrations/
-│   ├── playwright_highlighter.py   # Conector Playwright CDP
+│   ├── playwright_highlighter.py   # Injectare CDP a userscript-ului (Setări)
 │   └── userscript_generator.py     # Generator script Tampermonkey
 └── assets/
     ├── icon.png                    # Logo grafic
@@ -170,7 +170,7 @@ Regulile scrise înainte continuă să funcționeze neschimbat.
 ## 🧪 Teste
 
 ```powershell
-python tests/run_all.py               # tot (164 teste Python + 20 JavaScript)
+python tests/run_all.py               # tot (190 teste Python + 20 JavaScript)
 ```
 
 Sau separat:
@@ -179,6 +179,7 @@ Sau separat:
 python tests/test_rule_engine.py      # motorul de reguli
 python tests/test_probe_engine.py     # câmpuri, condiții, marcaje
 python tests/test_examples.py          # regulile-exemplu din documentație
+python tests/test_browser_injection.py  # injectarea CDP (+ 2 teste pe browser real)
 node   tests/test_userscript.js       # logica de potrivire din browser
 ```
 
@@ -229,6 +230,35 @@ instalează userscript-ul generat în `integrations/` prin Tampermonkey sau
 Violentmonkey: acolo chenarul e atașat de nodul HTML.
 
 Userscript-ul se regenerează automat la fiecare salvare de regulă.
+
+#### Fără extensie: injectare directă prin portul de depanare (CDP)
+
+Dacă extensiile nu se pot instala, FocusPilot poate pune același script direct
+în taburile din Chrome sau Edge. În **Setări → Browser — injectare directă
+(CDP)** bifează opțiunea și lasă portul 9222. Browserul trebuie pornit cu
+portul de depanare deschis și cu un profil separat, de exemplu printr-o
+scurtătură:
+
+```powershell
+msedge.exe --remote-debugging-port=9222 --user-data-dir=C:\FocusPilot\ProfilEdge
+```
+
+Profilul separat e obligatoriu: Chrome și Edge recente ignoră portul de
+depanare pe profilul implicit. În acel profil trebuie să te autentifici o dată.
+
+FocusPilot verifică taburile la câteva secunde și injectează scriptul în cele
+noi, după navigare și după fiecare salvare de regulă. Linia **Stare** din
+setări spune dacă e conectat, dacă browserul nu răspunde pe port sau dacă
+lipsește pachetul `playwright`. La dezactivare marcajele dispar din pagini.
+Dacă ai și userscript-ul în Tampermonkey, cele două nu se dublează.
+
+Ca și userscript-ul, injectarea acoperă regulile clasice (text căutat +
+reper vizual). Regulile pe condiții (câmpuri și marcaje) rămân pe overlay-ul
+de pe ecran.
+
+Portul de depanare permite oricărui program de pe calculator să controleze
+browserul pornit așa. Folosește profilul separat doar pentru aplicațiile pe
+care le marchezi.
 
 ### Jurnal
 

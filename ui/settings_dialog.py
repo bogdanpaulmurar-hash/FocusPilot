@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, Callable
 from core.config_manager import ConfigManager
 from core.autostart import set_autostart, is_autostart_enabled
 from core.keep_awake import enable_keep_awake, disable_keep_awake
+from integrations.playwright_highlighter import parse_port, LAUNCH_HINT
 from ui.theme import get_theme, FONT_TITLE, FONT_SUBTITLE, FONT_BODY, FONT_BODY_BOLD, FONT_SMALL
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,10 @@ logger = logging.getLogger(__name__)
 class SettingsDialog:
     """Fereastră modală pentru setările generale ale aplicației FocusPilot."""
 
-    def __init__(self, parent: tk.Toplevel, config_manager: ConfigManager, on_settings_changed: Callable[[], None]):
+    def __init__(self, parent: tk.Toplevel, config_manager: ConfigManager, on_settings_changed: Callable[[], None],
+                 browser_status: Optional[Callable[[], Any]] = None):
         self.parent = parent
+        self.browser_status = browser_status
         self.cfg = config_manager
         self.on_settings_changed = on_settings_changed
 
@@ -34,7 +37,7 @@ class SettingsDialog:
     def _build_ui(self) -> None:
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("⚙️ Setări Generale FocusPilot")
-        self.dialog.geometry("540x520")
+        self.dialog.geometry("560x720")
         self.dialog.resizable(False, False)
         self.dialog.configure(bg=self.theme["bg_main"])
         self.dialog.transient(self.parent)
@@ -114,6 +117,38 @@ class SettingsDialog:
         cb_theme = ttk.Combobox(row_theme, textvariable=self.var_theme, values=["dark", "light"], state="readonly", width=12)
         cb_theme.pack(side="right")
 
+        # ── Card: Browser ──
+        card3 = self._create_card(content, "Browser — injectare directă (CDP)")
+
+        self.var_cdp = tk.BooleanVar(value=self.cfg.get_setting("cdp_injection_enabled", False))
+        tk.Checkbutton(
+            card3, text="Aplică regulile direct în paginile din Chrome / Edge",
+            variable=self.var_cdp, font=FONT_BODY_BOLD,
+            bg=self.theme["bg_card"], fg=self.theme["fg_primary"],
+            selectcolor=self.theme["bg_input"], activebackground=self.theme["bg_card"]
+        ).pack(anchor="w", pady=4)
+
+        row_port = tk.Frame(card3, bg=self.theme["bg_card"])
+        row_port.pack(fill="x", pady=4)
+        tk.Label(row_port, text="Port de depanare:", font=FONT_BODY,
+                 bg=self.theme["bg_card"], fg=self.theme["fg_primary"]).pack(side="left")
+        self.var_cdp_port = tk.StringVar(value=str(self.cfg.get_setting("cdp_port", 9222)))
+        tk.Entry(row_port, textvariable=self.var_cdp_port, width=8, font=FONT_BODY,
+                 bg=self.theme["bg_input"], fg=self.theme["fg_primary"],
+                 relief="flat").pack(side="left", padx=8)
+
+        tk.Label(
+            card3, text=LAUNCH_HINT.format(port="<port>"), font=FONT_SMALL,
+            bg=self.theme["bg_card"], fg=self.theme["fg_secondary"],
+            wraplength=480, justify="left"
+        ).pack(anchor="w", pady=(2, 2))
+
+        self.lbl_cdp_status = tk.Label(
+            card3, text="", font=FONT_SMALL, bg=self.theme["bg_card"],
+            fg=self.theme["fg_secondary"], wraplength=480, justify="left")
+        self.lbl_cdp_status.pack(anchor="w", pady=(2, 0))
+        self._refresh_cdp_status()
+
         # Buton Salvează
         btn_row = tk.Frame(content, bg=self.theme["bg_main"])
         btn_row.pack(fill="x", pady=(16, 0))
@@ -134,6 +169,19 @@ class SettingsDialog:
         inner.pack(fill="x", padx=12, pady=(0, 10))
         return inner
 
+    def _refresh_cdp_status(self) -> None:
+        """Starea injectării, reîmprospătată cât timp dialogul e deschis."""
+        if not self.dialog or not self.dialog.winfo_exists():
+            return
+        if self.browser_status is None:
+            self.lbl_cdp_status.configure(text="Stare: indisponibilă în această fereastră.")
+            return
+        status = self.browser_status()
+        self.lbl_cdp_status.configure(
+            text="Stare: " + status.describe(),
+            fg=self.theme["fg_secondary"] if status.ok else self.theme["orange"])
+        self.dialog.after(1000, self._refresh_cdp_status)
+
     def _toggle_autostart(self) -> None:
         target_state = self.var_autostart.get()
         success = set_autostart(target_state)
@@ -142,6 +190,13 @@ class SettingsDialog:
             self.var_autostart.set(not target_state)
 
     def _save_settings(self) -> None:
+        try:
+            cdp_port = parse_port(self.var_cdp_port.get())
+        except ValueError as exc:
+            messagebox.showwarning("Port invalid", str(exc), parent=self.dialog)
+            return
+        self.cfg.set_setting("cdp_injection_enabled", self.var_cdp.get(), auto_save=False)
+        self.cfg.set_setting("cdp_port", cdp_port, auto_save=False)
         self.cfg.set_setting("hide_on_start", self.var_hide_tray.get(), auto_save=False)
         self.cfg.set_setting("keep_awake", self.var_keep_awake.get(), auto_save=False)
         self.cfg.set_setting("poll_interval_sec", round(self.var_poll.get(), 2), auto_save=False)

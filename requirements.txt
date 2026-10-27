@@ -17,6 +17,6 @@ pyautogui>=0.9.54
 # Fără el urmărirea prin șablon imagine eșuează la fiecare apel.
 opencv-python>=4.8.0
 
-# Opțional: injectare directă în browser prin CDP.
+# Opțional: injectare directă în browser prin CDP (Setări → Browser).
 # Alternativa fără Playwright este userscript-ul generat pentru Tampermonkey.
 playwright>=1.40.0

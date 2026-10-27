@@ -24,8 +24,12 @@ class MainWindow:
                  on_rules_changed: Callable[[], None],
                  on_test_cue: Callable[[Dict[str, Any]], None],
                  on_toggle_pause: Callable[[], bool],
-                 on_quit: Callable[[], None]):
+                 on_quit: Callable[[], None],
+                 on_settings_changed: Optional[Callable[[], None]] = None,
+                 browser_status: Optional[Callable[[], Any]] = None):
         self.root = root
+        self.on_settings_changed = on_settings_changed
+        self.browser_status = browser_status
         self.cfg = config_manager
         self.on_rules_changed = on_rules_changed
         self.on_test_cue = on_test_cue
@@ -363,9 +367,12 @@ class MainWindow:
             self.refresh_rules_list()
 
     def _open_settings(self) -> None:
-        SettingsDialog(self.root, self.cfg, self._on_settings_updated)
+        SettingsDialog(self.root, self.cfg, self._on_settings_updated,
+                       browser_status=self.browser_status)
 
     def _on_settings_updated(self) -> None:
+        if self.on_settings_changed:
+            self.on_settings_changed()
         new_theme = self.cfg.get_setting("theme", "dark")
         if new_theme != self.theme_name:
             self.theme_name = new_theme

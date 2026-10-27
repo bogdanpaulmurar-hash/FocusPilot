@@ -576,6 +576,35 @@ instalează userscript-ul din `integrations/` prin **Tampermonkey** sau
 **Violentmonkey**: acolo chenarul e atașat de nodul HTML. Se regenerează automat
 la fiecare salvare de regulă.
 
+#### Fără extensie: injectare directă prin portul de depanare (CDP)
+
+Dacă extensiile nu se pot instala, FocusPilot poate pune același script direct
+în taburile din Chrome sau Edge. În **Setări → Browser — injectare directă
+(CDP)** bifează opțiunea și lasă portul 9222. Browserul trebuie pornit cu
+portul de depanare deschis și cu un profil separat, de exemplu printr-o
+scurtătură:
+
+```powershell
+msedge.exe --remote-debugging-port=9222 --user-data-dir=C:\FocusPilot\ProfilEdge
+```
+
+Profilul separat e obligatoriu: Chrome și Edge recente ignoră portul de
+depanare pe profilul implicit. În acel profil trebuie să te autentifici o dată.
+
+FocusPilot verifică taburile la câteva secunde și injectează scriptul în cele
+noi, după navigare și după fiecare salvare de regulă. Linia **Stare** din
+setări spune dacă e conectat, dacă browserul nu răspunde pe port sau dacă
+lipsește pachetul `playwright`. La dezactivare marcajele dispar din pagini.
+Dacă ai și userscript-ul în Tampermonkey, cele două nu se dublează.
+
+Ca și userscript-ul, injectarea acoperă regulile clasice (text căutat +
+reper vizual). Regulile pe condiții (câmpuri și marcaje) rămân pe overlay-ul
+de pe ecran.
+
+Portul de depanare permite oricărui program de pe calculator să controleze
+browserul pornit așa. Folosește profilul separat doar pentru aplicațiile pe
+care le marchezi.
+
 ### Jurnal
 
 `focuspilot_log.txt`, rotativ la 2 MB. Pentru detalii complete:
